@@ -96,7 +96,7 @@
 .sp-shell { display:flex; min-height:100vh; }
 .sp-rail {
   width: 210px; flex-shrink:0; background: #000000; color:#fff;
-  padding: 22px 0; position: sticky; top:0; height:100vh; display:flex; flex-direction:column;
+  padding: 22px 0; position: sticky; top:0; height:100dvh; display:flex; flex-direction:column;
 }
 .sp-brand { padding: 0 20px 22px; }
 .sp-brand .mark { font-size: 25px; line-height:1; }
@@ -180,12 +180,14 @@
 .sp .plate span { font-size:9px; font-weight:700; font-family:'JetBrains Mono',monospace; }
 
 /* chat */
-.sp .chatwrap { display:flex; flex-direction:column; height: calc(100vh - 190px); min-height:440px; }
-.sp .chatlog { flex:1; overflow-y:auto; padding: 20px; display:flex; flex-direction:column; gap:16px; }
+.sp-main.fit { display:flex; flex-direction:column; height:100dvh; overflow:hidden; }
+.sp-main.fit .pagehead { flex-shrink:0; }
+.sp .chatwrap { display:flex; flex-direction:column; flex:1 1 auto; min-height:0; }
+.sp .chatlog { flex:1; min-height:0; overflow-y:auto; padding: 20px; display:flex; flex-direction:column; gap:16px; }
 .sp .bub { max-width: 76%; padding: 12px 15px; border-radius:3px; font-size:14.5px; white-space:pre-wrap; }
 .sp .bub.me { align-self:flex-end; background:var(--accent); color:var(--accent-ink); }
 .sp .bub.coach { align-self:flex-start; background:var(--panel2); border:1.5px solid var(--line); color:var(--ink); }
-.sp .chatbar { display:flex; gap:10px; padding:14px; border-top:1.5px solid var(--line); background:var(--panel); }
+.sp .chatbar { display:flex; gap:10px; padding:14px; border-top:1.5px solid var(--line); background:var(--panel); flex-shrink:0; }
 
 /* misc */
 .sp .chip {
@@ -241,7 +243,7 @@
   }
   .sp-tabs button.on { color:#fff; }
   .sp .bub { max-width: 90%; }
-  .sp .chatwrap { height: calc(100vh - 250px); }
+  .sp-main.fit { height: 100dvh; padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
 }
 `;
   var PLATE_COLORS = {
@@ -666,6 +668,22 @@ body=${text.slice(0, 500)}`;
     if (level === "Train regularly") return { sets: 4, reps: isCompound ? "6-8" : "10-12", rest: "90 sec" };
     return { sets: 5, reps: isCompound ? "5-8" : "8-10", rest: "2 min" };
   }
+  function pickOneReplacement(muscleKey, have, maxDifficulty, useTop20, disabled, exclude = []) {
+    var _a;
+    const meta = MUSCLE_BY_KEY[muscleKey];
+    if (!meta) return null;
+    const basePool = useTop20 ? meta.pool : ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool;
+    const disabledSet = new Set(disabled);
+    const notDisabled = basePool.filter((e) => !disabledSet.has(e.name));
+    const afterDisabled = notDisabled.length ? notDisabled : basePool;
+    const byDifficulty = afterDisabled.filter((e) => DIFFICULTY_ORDER.indexOf(e.difficulty) <= maxDifficulty);
+    let pool2 = byDifficulty.length ? byDifficulty : afterDisabled;
+    pool2 = pool2.filter((e) => equipOk(e.equip, have)).length ? pool2.filter((e) => equipOk(e.equip, have)) : pool2.filter((e) => e.equip.length === 0);
+    if (pool2.length === 0) pool2 = byDifficulty.length ? byDifficulty : afterDisabled;
+    const fresh = pool2.filter((e) => !exclude.includes(e.name));
+    const usable = fresh.length ? fresh : pool2;
+    return shuffle(usable)[0] || null;
+  }
   function weightedPick(day, have, target, exclude = [], maxDifficulty = 3, useTop20 = true, disabled = []) {
     const active = day.muscles.filter((m) => m.weight > 0);
     if (active.length === 0) return [];
@@ -782,7 +800,8 @@ body=${text.slice(0, 500)}`;
         cues: desc.instructions,
         why: desc.targets,
         category: ((_a = MUSCLE_BY_KEY[ex.muscleKey]) == null ? void 0 : _a.pose) || "Full Body",
-        equip: ex.equip
+        equip: ex.equip,
+        muscleKey: ex.muscleKey
       };
     });
     const goals = p.goals || [];
@@ -878,6 +897,11 @@ body=${text.slice(0, 500)}`;
       { key: "level", title: "Where are you starting from?", ok: !!p.level },
       { key: "gear", title: "What can you actually train with?", ok: p.equipment.length > 0 },
       { key: "split", title: "How do you want to train?", ok: !!p.splitChoice },
+      ...p.splitChoice === "Custom" ? [{
+        key: "customSplit",
+        title: "Build your split",
+        ok: (p.splitConfig || defaultSplitConfig(p.days)).every((d) => d.rest || d.muscles.length > 0 && d.muscles.reduce((s, m) => s + m.weight, 0) === 100)
+      }] : [],
       { key: "targets", title: "Your weight & targets", ok: +p.weight > 0 }
     ];
     const cur = steps[step];
@@ -885,7 +909,7 @@ body=${text.slice(0, 500)}`;
       let splitConfig, days;
       if (p.splitChoice === "Custom") {
         days = p.days;
-        splitConfig = defaultSplitConfig(days);
+        splitConfig = p.splitConfig || defaultSplitConfig(days);
       } else {
         const preset = PRESETS.find((pr) => pr.name === p.splitChoice);
         splitConfig = preset ? preset.build(p.days) : defaultSplitConfig(p.days);
@@ -918,7 +942,7 @@ body=${text.slice(0, 500)}`;
         },
         g
       );
-    })), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: 10 } }, "Pick up to 3 \u2014 e.g. lose fat while getting stronger.")), cur.key === "level" && /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, LEVELS.map((l) => /* @__PURE__ */ React.createElement("button", { key: l, className: "chip" + (p.level === l ? " on" : ""), onClick: () => set("level", l) }, l))), cur.key === "gear" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: -8, marginBottom: 14 } }, "Pick everything you have access to. Your plan will only use these."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, GEAR.map((g) => /* @__PURE__ */ React.createElement("button", { key: g, className: "chip" + (p.equipment.includes(g) ? " on" : ""), onClick: () => toggle("equipment", g) }, g)))), cur.key === "split" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Minutes per session"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [30, 45, 60, 75, 90].map((m) => /* @__PURE__ */ React.createElement("button", { key: m, className: "chip mono" + (p.session === m ? " on" : ""), onClick: () => set("session", m), style: { minWidth: 52, justifyContent: "center" } }, m)))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Training days per week"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [2, 3, 4, 5, 6, 7].map((d) => /* @__PURE__ */ React.createElement("button", { key: d, className: "chip mono" + (p.days === d ? " on" : ""), onClick: () => set("days", d), style: { minWidth: 46, justifyContent: "center" } }, d))), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 8 } }, "Presets below adapt to this. Bro split and Upper/Lower keep their own fixed structure regardless \u2014 pick Custom if you want full control over day count.")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Choose your split"), /* @__PURE__ */ React.createElement("div", { className: "stack", style: { gap: 8 } }, PRESETS.map((preset) => {
+    })), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: 10 } }, "Pick up to 3 \u2014 e.g. lose fat while getting stronger.")), cur.key === "level" && /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, LEVELS.map((l) => /* @__PURE__ */ React.createElement("button", { key: l, className: "chip" + (p.level === l ? " on" : ""), onClick: () => set("level", l) }, l))), cur.key === "gear" && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: -8, marginBottom: 14 } }, "Pick everything you have access to. Your plan will only use these."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, GEAR.map((g) => /* @__PURE__ */ React.createElement("button", { key: g, className: "chip" + (p.equipment.includes(g) ? " on" : ""), onClick: () => toggle("equipment", g) }, g)))), cur.key === "split" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Minutes per session"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [30, 45, 60, 75, 90].map((m) => /* @__PURE__ */ React.createElement("button", { key: m, className: "chip mono" + (p.session === m ? " on" : ""), onClick: () => set("session", m), style: { minWidth: 52, justifyContent: "center" } }, m)))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Training days per week"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [2, 3, 4, 5, 6, 7].map((d) => /* @__PURE__ */ React.createElement("button", { key: d, className: "chip mono" + (p.days === d ? " on" : ""), onClick: () => setP((s) => ({ ...s, days: d, splitConfig: defaultSplitConfig(d) })), style: { minWidth: 46, justifyContent: "center" } }, d))), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 8 } }, "Presets below adapt to this. Bro split and Upper/Lower keep their own fixed structure regardless \u2014 pick Custom if you want full control over day count.")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Choose your split"), /* @__PURE__ */ React.createElement("div", { className: "stack", style: { gap: 8 } }, PRESETS.map((preset) => {
       const selected = p.splitChoice === preset.name;
       return /* @__PURE__ */ React.createElement(
         "button",
@@ -939,7 +963,18 @@ body=${text.slice(0, 500)}`;
         style: { textAlign: "left", border: p.splitChoice === "Custom" ? "2px solid var(--ink)" : "1.5px solid var(--line)" }
       },
       /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, "Custom"), p.splitChoice === "Custom" && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10.5, fontWeight: 700, color: "var(--green)", letterSpacing: ".06em" } }, "SELECTED")),
-      /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 6, marginBottom: 0, lineHeight: 1.4 } }, "Start blank and build your own day-by-day split in Settings \u2192 Split after setup.")
+      /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 6, marginBottom: 0, lineHeight: 1.4 } }, "Build your own day-by-day split on the next step \u2014 pick muscles per day and set the weighting yourself.")
+    )))), cur.key === "customSplit" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13, marginTop: -6 } }, "Pick which muscles each day trains and how much weight each gets. Percentages must add to 100 per training day."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, PRESETS.map((preset) => /* @__PURE__ */ React.createElement("button", { key: preset.name, className: "chip", onClick: () => set("splitConfig", preset.build(p.days)) }, "Start from ", preset.name))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 } }, (p.splitConfig || defaultSplitConfig(p.days)).map((day, i) => /* @__PURE__ */ React.createElement(
+      DayEditor,
+      {
+        key: i,
+        index: i,
+        day: { day: DAYS[i], ...day },
+        onChange: (next) => setP((s) => ({
+          ...s,
+          splitConfig: (s.splitConfig || defaultSplitConfig(s.days)).map((d, j) => j === i ? next : d)
+        }))
+      }
     )))), cur.key === "targets" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("div", { className: "row" }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Current bodyweight"), /* @__PURE__ */ React.createElement(
       "input",
       {
@@ -1019,7 +1054,7 @@ body=${text.slice(0, 500)}`;
     const desc = describeExercise(ex.name);
     return /* @__PURE__ */ React.createElement("div", { className: "sheet", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "sheetbody", onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": "How to " + ex.name }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "How to do it"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 25, marginTop: 6, lineHeight: 1.05 } }, ex.name)), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onClose }, "Close")), /* @__PURE__ */ React.createElement("a", { className: "btn", href: yt, target: "_blank", rel: "noopener noreferrer", style: { marginTop: 18, textDecoration: "none" } }, "Watch a tutorial \u2197"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 11.5, marginTop: 8 } }, VIDEO_LINKS[ex.name] ? "Direct link to a verified form video." : "Opens a YouTube search so you can pick a coach you trust."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Instructions"), /* @__PURE__ */ React.createElement("ol", { style: { margin: 0, paddingLeft: 0, listStyle: "none" } }, desc.instructions.map((c, i) => /* @__PURE__ */ React.createElement("li", { key: i, style: { display: "flex", gap: 13, padding: "11px 0", borderBottom: "1.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, color: "var(--red)", flexShrink: 0 } }, String(i + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14.5 } }, c))))), desc.grip && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Grip"), /* @__PURE__ */ React.createElement("p", { style: { fontSize: 14, margin: 0 } }, desc.grip)), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Form tips"), /* @__PURE__ */ React.createElement("ul", { style: { margin: 0, paddingLeft: 18 } }, desc.tips.map((t, i) => /* @__PURE__ */ React.createElement("li", { key: i, style: { fontSize: 14, marginBottom: 6 } }, t)))), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Common mistakes"), /* @__PURE__ */ React.createElement("ul", { style: { margin: 0, paddingLeft: 18 } }, desc.mistakes.map((m, i) => /* @__PURE__ */ React.createElement("li", { key: i, style: { fontSize: 14, marginBottom: 6, color: "var(--iron)" } }, m)))), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: 18 } }, /* @__PURE__ */ React.createElement("strong", null, "What it trains:"), " ", desc.targets), ex.load && /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13.5, marginTop: 8 } }, /* @__PURE__ */ React.createElement("strong", null, "Loading:"), " ", ex.load)));
   }
-  function ExerciseRow({ ex, idx, dayKey, logs, setLogs, units, onForm }) {
+  function ExerciseRow({ ex, idx, dayKey, logs, setLogs, units, onForm, onSwapExercise, swapping }) {
     var _a;
     const [open, setOpen] = useState(false);
     const logKey = dayKey + "|" + ex.name;
@@ -1036,9 +1071,9 @@ body=${text.slice(0, 500)}`;
     };
     const doneCount = sets.filter((s) => s.done).length;
     const lastWeight = (_a = [...sets].reverse().find((s) => s.w)) == null ? void 0 : _a.w;
-    return /* @__PURE__ */ React.createElement("div", { className: "exrow" }, /* @__PURE__ */ React.createElement("div", { className: "exhead" }, /* @__PURE__ */ React.createElement("span", { className: "exnum mono" }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement("span", { className: "exname" }, ex.name), /* @__PURE__ */ React.createElement("span", { className: "exspec mono" }, sets.length, "\xD7", ex.reps)), /* @__PURE__ */ React.createElement("div", { className: "exmeta" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, "rest ", ex.rest), doneCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--green)", fontWeight: 700 } }, doneCount, "/", sets.length, " logged"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => onForm(ex) }, "Show form"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => setOpen((o) => !o) }, open ? "Hide log" : "Log sets")), open && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 14, paddingLeft: 36 } }, /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Set"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Weight (", units, ")"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Reps"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Done"), /* @__PURE__ */ React.createElement("div", null)), sets.map((s, i) => /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5", key: i }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, color: "var(--steel)" } }, i + 1), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "decimal", value: s.w, onChange: (e) => update(i, { w: e.target.value }), placeholder: "\u2013", "aria-label": `Set ${i + 1} weight` }), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "numeric", value: s.r, onChange: (e) => update(i, { r: e.target.value }), placeholder: String(ex.reps || ""), "aria-label": `Set ${i + 1} reps` }), /* @__PURE__ */ React.createElement("button", { className: "tick" + (s.done ? " done" : ""), onClick: () => update(i, { done: !s.done }), "aria-label": `Mark set ${i + 1} complete`, "aria-pressed": s.done }, "\u2713"), /* @__PURE__ */ React.createElement("button", { className: "setremove", onClick: () => removeSet(i), disabled: sets.length <= 1, "aria-label": `Remove set ${i + 1}` }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", style: { marginTop: 10 }, onClick: addSet }, "+ Add set"), lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "8px 12px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the bar \u2014 ", lastWeight, units), /* @__PURE__ */ React.createElement(PlateBar, { total: +lastWeight, units }))));
+    return /* @__PURE__ */ React.createElement("div", { className: "exrow" }, /* @__PURE__ */ React.createElement("div", { className: "exhead" }, /* @__PURE__ */ React.createElement("span", { className: "exnum mono" }, String(idx + 1).padStart(2, "0")), /* @__PURE__ */ React.createElement("span", { className: "exname" }, swapping ? "Finding a replacement\u2026" : ex.name), /* @__PURE__ */ React.createElement("span", { className: "exspec mono" }, sets.length, "\xD7", ex.reps)), /* @__PURE__ */ React.createElement("div", { className: "exmeta" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, "rest ", ex.rest), doneCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--green)", fontWeight: 700 } }, doneCount, "/", sets.length, " logged"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => onForm(ex) }, "Show form"), onSwapExercise && /* @__PURE__ */ React.createElement("button", { className: "linkish", disabled: swapping, onClick: () => onSwapExercise(idx), title: "Can't do this one? Swap it for another exercise that trains the same muscle." }, swapping ? "Swapping\u2026" : "Swap"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => setOpen((o) => !o) }, open ? "Hide log" : "Log sets")), open && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 14, paddingLeft: 36 } }, /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Set"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Weight (", units, ")"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Reps"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Done"), /* @__PURE__ */ React.createElement("div", null)), sets.map((s, i) => /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5", key: i }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, color: "var(--steel)" } }, i + 1), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "decimal", value: s.w, onChange: (e) => update(i, { w: e.target.value }), placeholder: "\u2013", "aria-label": `Set ${i + 1} weight` }), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "numeric", value: s.r, onChange: (e) => update(i, { r: e.target.value }), placeholder: String(ex.reps || ""), "aria-label": `Set ${i + 1} reps` }), /* @__PURE__ */ React.createElement("button", { className: "tick" + (s.done ? " done" : ""), onClick: () => update(i, { done: !s.done }), "aria-label": `Mark set ${i + 1} complete`, "aria-pressed": s.done }, "\u2713"), /* @__PURE__ */ React.createElement("button", { className: "setremove", onClick: () => removeSet(i), disabled: sets.length <= 1, "aria-label": `Remove set ${i + 1}` }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", style: { marginTop: 10 }, onClick: addSet }, "+ Add set"), lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "8px 12px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the bar \u2014 ", lastWeight, units), /* @__PURE__ */ React.createElement(PlateBar, { total: +lastWeight, units }))));
   }
-  function WorkoutCard({ day, dayIndex, workout, dayKey, logs, setLogs, units, onForm, onSwap, swapping, onComplete, completedToday }) {
+  function WorkoutCard({ day, dayIndex, workout, dayKey, logs, setLogs, units, onForm, onSwap, swapping, onSwapExercise, swappingExIdx, onComplete, completedToday }) {
     var _a;
     const color = dayColor(dayIndex);
     const [completing, setCompleting] = useState(false);
@@ -1070,7 +1105,7 @@ body=${text.slice(0, 500)}`;
         /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, done ? "\u2713" : "\u25CB"),
         w
       );
-    }))), /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1.5px solid var(--line)" } }, (workout.exercises || []).map((ex, i) => /* @__PURE__ */ React.createElement(ExerciseRow, { key: ex.name + i, ex, idx: i, dayKey, logs, setLogs, units, onForm }))), workout.finisher && (() => {
+    }))), /* @__PURE__ */ React.createElement("div", { style: { borderTop: "1.5px solid var(--line)" } }, (workout.exercises || []).map((ex, i) => /* @__PURE__ */ React.createElement(ExerciseRow, { key: ex.name + i, ex, idx: i, dayKey, logs, setLogs, units, onForm, onSwapExercise, swapping: swappingExIdx === i }))), workout.finisher && (() => {
       const key = dayKey + "|cooldown";
       const done = !!(logs.prep && logs.prep[key]);
       return /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 20px", borderTop: "1.5px solid var(--line)", background: "var(--panel2)" } }, /* @__PURE__ */ React.createElement(
@@ -1128,29 +1163,53 @@ body=${text.slice(0, 500)}`;
     },
     {
       name: "Bro split",
-      desc: "One muscle group fully dedicated per day \u2014 chest, back, shoulders, legs, arms. Maximum focus per muscle, needs more training days to cover everything.",
-      build: () => [
-        { rest: false, muscles: [{ key: "chest", weight: 100 }] },
-        { rest: false, muscles: [{ key: "back", weight: 100 }] },
-        { rest: false, muscles: [{ key: "shoulders", weight: 100 }] },
-        { rest: false, muscles: [{ key: "quads", weight: 55 }, { key: "hamsGlutes", weight: 35 }, { key: "calves", weight: 10 }] },
-        { rest: false, muscles: [{ key: "biceps", weight: 50 }, { key: "triceps", weight: 50 }] },
-        { rest: true, muscles: [] },
-        { rest: true, muscles: [] }
-      ]
+      desc: "One muscle group fully dedicated per day \u2014 chest, back, shoulders, legs, arms. At 6 days it adds a core/cardio day; at 7 it adds a full conditioning day too, so every selected day actually gets used.",
+      build: (days = 5) => {
+        const musclesDays = [
+          { rest: false, muscles: [{ key: "chest", weight: 100 }] },
+          { rest: false, muscles: [{ key: "back", weight: 100 }] },
+          { rest: false, muscles: [{ key: "shoulders", weight: 100 }] },
+          { rest: false, muscles: [{ key: "quads", weight: 55 }, { key: "hamsGlutes", weight: 35 }, { key: "calves", weight: 10 }] },
+          { rest: false, muscles: [{ key: "biceps", weight: 50 }, { key: "triceps", weight: 50 }] }
+        ];
+        const coreCardio = { rest: false, muscles: [{ key: "core", weight: 60 }, { key: "cardio", weight: 40 }] };
+        const conditioning = { rest: false, muscles: [{ key: "conditioning", weight: 100 }] };
+        const rest = { rest: true, muscles: [] };
+        let training;
+        if (days <= 5) {
+          training = musclesDays.slice(0, Math.max(1, days));
+        } else if (days === 6) {
+          training = [...musclesDays, coreCardio];
+        } else {
+          training = [...musclesDays, coreCardio, conditioning];
+        }
+        const week = [...training];
+        while (week.length < 7) week.push(rest);
+        return week.slice(0, 7);
+      }
     },
     {
       name: "Upper / Lower",
-      desc: "Alternates whole upper body (chest, back, shoulders, arms) with whole lower body (quads, hamstrings, glutes, calves). Hits everything twice a week with fewer, bigger sessions.",
-      build: () => [
-        { rest: false, muscles: [{ key: "chest", weight: 30 }, { key: "back", weight: 30 }, { key: "shoulders", weight: 20 }, { key: "biceps", weight: 10 }, { key: "triceps", weight: 10 }] },
-        { rest: false, muscles: [{ key: "quads", weight: 50 }, { key: "hamsGlutes", weight: 40 }, { key: "calves", weight: 10 }] },
-        { rest: true, muscles: [] },
-        { rest: false, muscles: [{ key: "chest", weight: 30 }, { key: "back", weight: 30 }, { key: "shoulders", weight: 20 }, { key: "biceps", weight: 10 }, { key: "triceps", weight: 10 }] },
-        { rest: false, muscles: [{ key: "quads", weight: 50 }, { key: "hamsGlutes", weight: 40 }, { key: "calves", weight: 10 }] },
-        { rest: true, muscles: [] },
-        { rest: true, muscles: [] }
-      ]
+      desc: "Alternates whole upper body (chest, back, shoulders, arms) with whole lower body (quads, hamstrings, glutes, calves). At 6 days that's 3 full rotations; at 7 it adds a conditioning day.",
+      build: (days = 4) => {
+        const upper = { rest: false, muscles: [{ key: "chest", weight: 30 }, { key: "back", weight: 30 }, { key: "shoulders", weight: 20 }, { key: "biceps", weight: 10 }, { key: "triceps", weight: 10 }] };
+        const lower = { rest: false, muscles: [{ key: "quads", weight: 50 }, { key: "hamsGlutes", weight: 40 }, { key: "calves", weight: 10 }] };
+        const conditioning = { rest: false, muscles: [{ key: "conditioning", weight: 100 }] };
+        const rest = { rest: true, muscles: [] };
+        let training;
+        if (days <= 2) {
+          training = [upper, lower].slice(0, Math.max(1, days));
+        } else if (days <= 5) {
+          training = Array.from({ length: days }, (_, i) => i % 2 === 0 ? upper : lower);
+        } else if (days === 6) {
+          training = [upper, lower, upper, lower, upper, lower];
+        } else {
+          training = [upper, lower, upper, lower, upper, lower, conditioning];
+        }
+        const week = [...training];
+        while (week.length < 7) week.push(rest);
+        return week.slice(0, 7);
+      }
     }
   ];
   function describeDay(day) {
@@ -1328,7 +1387,7 @@ body=${text.slice(0, 500)}`;
     return /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden", marginBottom: 14 } }, /* @__PURE__ */ React.createElement(Stripe, { color }), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 16, fontWeight: 700, marginBottom: 8 } }, title), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14, lineHeight: 1.6, color: "var(--iron)" } }, children)));
   }
   var DIFF_COLOR = { easy: "#6E6F78", intermediate: "#C8102E", advanced: "#FF1E3C", master: "#FF4159" };
-  function WorkoutSettingsView({ profile, setProfile, onRegenerate, rebuilding, setView }) {
+  function WorkoutSettingsView({ profile, setProfile, onRegenerate, rebuilding, setView, dirtyRef }) {
     const [equipment, setEquipment] = useState(profile.equipment);
     const [level, setLevel] = useState(profile.level);
     const [difficultyOverride, setDifficultyOverride] = useState(profile.difficultyOverride || null);
@@ -1340,6 +1399,12 @@ body=${text.slice(0, 500)}`;
     const [dirty, setDirty] = useState(false);
     const [openKey, setOpenKey] = useState(null);
     const [q, setQ] = useState("");
+    useEffect(() => {
+      if (dirtyRef) dirtyRef.current = dirty;
+      return () => {
+        if (dirtyRef) dirtyRef.current = false;
+      };
+    }, [dirty, dirtyRef]);
     const touch = () => setDirty(true);
     const toggleEquip = (v) => {
       setEquipment((s) => s.includes(v) ? s.filter((x) => x !== v) : [...s, v]);
@@ -1559,7 +1624,18 @@ body=${text.slice(0, 500)}`;
     const [plan, setPlan] = useState(null);
     const [logs, setLogs] = useState({ sets: {}, meals: {}, body: [] });
     const [chat, setChat] = useState([]);
-    const [view, setView] = useState("today");
+    const [view, setViewRaw] = useState("today");
+    const workoutSettingsDirty = useRef(false);
+    const setView = useCallback((next) => {
+      if (workoutSettingsDirty.current && next !== "split") {
+        const leave = window.confirm(
+          `You have unsaved workout settings \u2014 equipment, split, or exercise library changes won't apply until you tap "Regenerate plan". Leave without regenerating?`
+        );
+        if (!leave) return;
+        workoutSettingsDirty.current = false;
+      }
+      setViewRaw(next);
+    }, []);
     const [profileTab, setProfileTab] = useState("progress");
     const [building, setBuilding] = useState(null);
     const [buildErr, setBuildErr] = useState("");
@@ -1568,6 +1644,7 @@ body=${text.slice(0, 500)}`;
     const [dayIdx, setDayIdx] = useState(() => ((/* @__PURE__ */ new Date()).getDay() + 6) % 7);
     const [weekIdx, setWeekIdx] = useState(0);
     const [swapping, setSwapping] = useState(false);
+    const [swappingExIdx, setSwappingExIdx] = useState(null);
     const [showWhy, setShowWhy] = useState(false);
     useEffect(() => {
       (async () => {
@@ -1650,6 +1727,36 @@ body=${text.slice(0, 500)}`;
       } catch {
       }
       setSwapping(false);
+    };
+    const swapSingleExercise = async (exIndex) => {
+      var _a2, _b2;
+      if (!plan || !profile) return;
+      const today2 = plan.weeks[weekIdx][dayIdx];
+      const current = (_b2 = (_a2 = today2 == null ? void 0 : today2.workout) == null ? void 0 : _a2.exercises) == null ? void 0 : _b2[exIndex];
+      if (!current) return;
+      setSwappingExIdx(exIndex);
+      try {
+        await wait(300);
+        const have = profile.equipment;
+        const otherNames = today2.workout.exercises.filter((_, i) => i !== exIndex).map((e) => e.name);
+        const replacement = pickOneReplacement(
+          current.muscleKey,
+          have,
+          maxDifficultyFor(profile.level, profile.difficultyOverride),
+          profile.top20Only !== false,
+          profile.disabledExercises || [],
+          [current.name, ...otherNames]
+        );
+        if (!replacement) return;
+        const desc = describeExercise(replacement.name);
+        const newEx = { ...current, name: replacement.name, cues: desc.instructions, why: desc.targets, equip: replacement.equip };
+        setPlan((pl) => ({
+          ...pl,
+          weeks: pl.weeks.map((wk, wi) => wi === weekIdx ? wk.map((x, i) => i === dayIdx ? { ...x, workout: { ...x.workout, exercises: x.workout.exercises.map((e, j) => j === exIndex ? newEx : e) } } : x) : wk)
+        }));
+      } catch {
+      }
+      setSwappingExIdx(null);
     };
     const completeWorkout = (durationMin) => {
       var _a2, _b2, _c;
@@ -1772,6 +1879,7 @@ body=${text.slice(0, 500)}`;
             setProfile,
             rebuilding: !!building,
             setView,
+            dirtyRef: workoutSettingsDirty,
             onRegenerate: async (updatedProfile) => {
               await generate(updatedProfile);
               setView("week");
@@ -1816,6 +1924,8 @@ body=${text.slice(0, 500)}`;
           onForm: setFormEx,
           onSwap: swapDay,
           swapping,
+          onSwapExercise: swapSingleExercise,
+          swappingExIdx,
           onComplete: completeWorkout,
           completedToday: (_a2 = logs.history) == null ? void 0 : _a2[localDateKey()]
         }
@@ -1889,6 +1999,7 @@ body=${text.slice(0, 500)}`;
           setProfile,
           rebuilding: !!building,
           setView,
+          dirtyRef: workoutSettingsDirty,
           onRegenerate: async (updatedProfile) => {
             await generate(updatedProfile);
             setView("week");
@@ -1914,7 +2025,7 @@ body=${text.slice(0, 500)}`;
       if (view === "progress") return null;
       return null;
     };
-    return /* @__PURE__ */ React.createElement("div", { className: "sp" + (profile.theme === "light" ? " light" : "") }, /* @__PURE__ */ React.createElement("style", null, CSS), /* @__PURE__ */ React.createElement("div", { className: "sp-shell" }, /* @__PURE__ */ React.createElement("nav", { className: "sp-rail" }, /* @__PURE__ */ React.createElement("div", { className: "sp-brand" }, /* @__PURE__ */ React.createElement("img", { src: APP_ICON, alt: "", width: "34", height: "34", style: { borderRadius: 7, display: "block", marginBottom: 10 } }), /* @__PURE__ */ React.createElement("div", { className: "mark disp" }, "Spotter"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, (profile.goals || []).join(" \xB7 ") || "General fitness"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { display: "inline-block", marginTop: 10, fontSize: 10, fontWeight: 700, letterSpacing: ".08em", padding: "3px 8px", background: "#FF1E3C", color: "#FFFFFF", borderRadius: 2 } }, "DEMO MODE")), /* @__PURE__ */ React.createElement("div", { className: "sp-nav" }, NAV.map(([k, label, color]) => /* @__PURE__ */ React.createElement("button", { key: k, className: view === k ? "on" : "", onClick: () => setView(k) }, /* @__PURE__ */ React.createElement("span", { className: "dot", style: { background: color } }), label))), /* @__PURE__ */ React.createElement("div", { className: "sp-rail-foot" }, profile.days, "\xD7 / week \xB7 ", profile.session, " min", /* @__PURE__ */ React.createElement("br", null), bp ? `${bp.kcal} kcal \xB7 ${bp.protein}g protein` : "")), /* @__PURE__ */ React.createElement("main", { className: "sp-main" }, /* @__PURE__ */ React.createElement("div", { className: "sp-quickbar" }, /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => setView("settings") }, "Settings")), shellBody())), /* @__PURE__ */ React.createElement("nav", { className: "sp-tabs" }, NAV.map(([k, label, color]) => /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "sp" + (profile.theme === "light" ? " light" : "") }, /* @__PURE__ */ React.createElement("style", null, CSS), /* @__PURE__ */ React.createElement("div", { className: "sp-shell" }, /* @__PURE__ */ React.createElement("nav", { className: "sp-rail" }, /* @__PURE__ */ React.createElement("div", { className: "sp-brand" }, /* @__PURE__ */ React.createElement("img", { src: APP_ICON, alt: "", width: "34", height: "34", style: { borderRadius: 7, display: "block", marginBottom: 10 } }), /* @__PURE__ */ React.createElement("div", { className: "mark disp" }, "Spotter"), /* @__PURE__ */ React.createElement("div", { className: "sub" }, (profile.goals || []).join(" \xB7 ") || "General fitness"), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { display: "inline-block", marginTop: 10, fontSize: 10, fontWeight: 700, letterSpacing: ".08em", padding: "3px 8px", background: "#FF1E3C", color: "#FFFFFF", borderRadius: 2 } }, "DEMO MODE")), /* @__PURE__ */ React.createElement("div", { className: "sp-nav" }, NAV.map(([k, label, color]) => /* @__PURE__ */ React.createElement("button", { key: k, className: view === k ? "on" : "", onClick: () => setView(k) }, /* @__PURE__ */ React.createElement("span", { className: "dot", style: { background: color } }), label))), /* @__PURE__ */ React.createElement("div", { className: "sp-rail-foot" }, profile.days, "\xD7 / week \xB7 ", profile.session, " min", /* @__PURE__ */ React.createElement("br", null), bp ? `${bp.kcal} kcal \xB7 ${bp.protein}g protein` : "")), /* @__PURE__ */ React.createElement("main", { className: "sp-main" + (view === "coach" ? " fit" : "") }, /* @__PURE__ */ React.createElement("div", { className: "sp-quickbar" }, /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => setView("settings") }, "Settings")), shellBody())), /* @__PURE__ */ React.createElement("nav", { className: "sp-tabs" }, NAV.map(([k, label, color]) => /* @__PURE__ */ React.createElement(
       "button",
       {
         key: k,
