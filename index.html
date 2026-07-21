@@ -160,7 +160,7 @@
   width:40px; height:36px; border:1.5px solid var(--line); background:var(--panel2); border-radius:2px;
   display:flex; align-items:center; justify-content:center; font-size:16px; color:var(--iron);
 }
-.sp .tick.done { background:var(--green); border-color:var(--green); color:#0A0A0C; }
+.sp .tick.done { background:var(--accent); border-color:var(--accent); color:var(--accent-ink); }
 
 /* plates */
 .sp .bar { display:flex; align-items:center; justify-content:center; height:66px; gap:0; }
@@ -194,7 +194,7 @@
   width:46px; height:26px; border-radius:14px; background:var(--line); border:1.5px solid var(--line);
   position:relative; flex-shrink:0; transition: background .15s, border-color .15s;
 }
-.sp .switch-track.on { background:var(--green); border-color:var(--green); }
+.sp .switch-track.on { background:var(--accent); border-color:var(--accent); }
 .sp .switch-knob {
   position:absolute; top:2px; left:2px; width:19px; height:19px; border-radius:50%; background:#fff;
   box-shadow:0 1px 2px rgba(0,0,0,.3); transition: left .15s;
@@ -349,7 +349,8 @@ body=${text.slice(0, 500)}`;
     const has = (...kws) => kws.some((k) => s.includes(k));
     const equip = /* @__PURE__ */ new Set();
     if (has("smith machine")) equip.add("Barbell + plates");
-    else if (has("barbell") || has("ez bar") || has("trap bar") || has("axle bar") || has("landmine")) equip.add("Barbell + plates");
+    else if (has("ez bar") || has("ez-bar")) equip.add("EZ bar + plates");
+    else if (has("barbell") || has("trap bar") || has("axle bar") || has("landmine") || has("t-bar") || has("inverted row") || has("australian row")) equip.add("Barbell + plates");
     if (has("dumbbell")) equip.add("Dumbbells");
     if (has("kettlebell")) equip.add("Kettlebells");
     if (has("cable") || has("pec deck") || has("pulldown") && !has("band")) equip.add("Cable machine");
@@ -666,11 +667,15 @@ body=${text.slice(0, 500)}`;
     if (level === "Train regularly") return { sets: 4, reps: isCompound ? "6-8" : "10-12", rest: "90 sec" };
     return { sets: 5, reps: isCompound ? "5-8" : "8-10", rest: "2 min" };
   }
-  function pickOneReplacement(muscleKey, have, maxDifficulty, useTop20, disabled, exclude = []) {
+  function customPoolEntries(customByMuscle, muscleKey) {
+    return ((customByMuscle == null ? void 0 : customByMuscle[muscleKey]) || []).map((name) => ({ name, equip: inferEquip(name) }));
+  }
+  function pickOneReplacement(muscleKey, have, maxDifficulty, useTop20, disabled, exclude = [], customByMuscle = {}) {
     var _a;
     const meta = MUSCLE_BY_KEY[muscleKey];
     if (!meta) return null;
-    const basePool = useTop20 ? meta.pool : ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool;
+    const custom = customPoolEntries(customByMuscle, muscleKey);
+    const basePool = [...useTop20 ? meta.pool : ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool, ...custom];
     const disabledSet = new Set(disabled);
     const notDisabled = basePool.filter((e) => !disabledSet.has(e.name));
     const afterDisabled = notDisabled.length ? notDisabled : basePool;
@@ -682,7 +687,7 @@ body=${text.slice(0, 500)}`;
     const usable = fresh.length ? fresh : pool2;
     return shuffle(usable)[0] || null;
   }
-  function weightedPick(day, have, target, exclude = [], maxDifficulty = 3, useTop20 = true, disabled = []) {
+  function weightedPick(day, have, target, exclude = [], maxDifficulty = 3, useTop20 = true, disabled = [], customByMuscle = {}) {
     const active = day.muscles.filter((m) => m.weight > 0);
     if (active.length === 0) return [];
     const totalW = active.reduce((s, m) => s + m.weight, 0) || 1;
@@ -711,7 +716,7 @@ body=${text.slice(0, 500)}`;
       var _a;
       const meta = MUSCLE_BY_KEY[c.key];
       if (!meta) return;
-      const basePool = useTop20 ? meta.pool : ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool;
+      const basePool = [...useTop20 ? meta.pool : ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool, ...customPoolEntries(customByMuscle, c.key)];
       const notDisabled = basePool.filter((e) => !disabledSet.has(e.name));
       const afterDisabled = notDisabled.length ? notDisabled : basePool;
       const byDifficulty = afterDisabled.filter((e) => DIFFICULTY_ORDER.indexOf(e.difficulty) <= maxDifficulty);
@@ -729,9 +734,30 @@ body=${text.slice(0, 500)}`;
     if (have.includes("Bodyweight only") && have.length === 1) return false;
     return exEquip.every((e) => have.includes(e));
   }
+  function toKg(weight, units) {
+    const w = +weight || 0;
+    if (units === "kg") return w;
+    if (units === "st") return w * 6.35029;
+    return w * 0.4536;
+  }
+  function heightCmFor(p) {
+    if (p.heightUnit === "ft") return ((+p.heightFt || 0) * 12 + (+p.heightIn || 0)) * 2.54;
+    return +p.heightCm || 0;
+  }
+  function computeBMR(p) {
+    const weightKg = toKg(p.weight, p.units);
+    const heightCm = heightCmFor(p);
+    const age = +p.age;
+    if (!weightKg || !heightCm || !age) return null;
+    const male = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+    const female = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+    if (p.sex === "male") return Math.round(male);
+    if (p.sex === "female") return Math.round(female);
+    return Math.round((male + female) / 2);
+  }
   async function buildBlueprint(p) {
     await wait(500);
-    const weightKg = p.units === "kg" ? +p.weight : +p.weight * 0.4536;
+    const weightKg = toKg(p.weight, p.units);
     const goals = p.goals || [];
     let factor = 1;
     if (goals.includes("Lose fat")) factor -= 0.12;
@@ -739,9 +765,17 @@ body=${text.slice(0, 500)}`;
     if (goals.includes("Get stronger")) factor += 0.03;
     if (goals.includes("Endurance")) factor -= 0.02;
     factor = Math.max(0.75, Math.min(1.2, factor));
-    let mult = 26 + p.days * 1.4;
-    let kcal = Math.round(weightKg * mult * factor);
-    if (p.calorieGoal && +p.calorieGoal > 0) kcal = Math.round(+p.calorieGoal);
+    const bmr = computeBMR(p);
+    let kcal;
+    if (p.calorieGoal && +p.calorieGoal > 0) {
+      kcal = Math.round(+p.calorieGoal);
+    } else if (bmr) {
+      const activityFactor = 1.3 + p.days * 0.06;
+      kcal = Math.round(bmr * activityFactor * factor);
+    } else {
+      const mult = 26 + p.days * 1.4;
+      kcal = Math.round(weightKg * mult * factor);
+    }
     let proteinPerKg = 1.8;
     if (goals.includes("Build muscle")) proteinPerKg += 0.3;
     if (goals.includes("Get stronger")) proteinPerKg += 0.2;
@@ -781,7 +815,7 @@ body=${text.slice(0, 500)}`;
     if (day.rest) return { rest: true, focus: day.focus, exercises: [], warmup: [], finisher: "" };
     const have = p.equipment;
     const target = p.session <= 30 ? 5 : p.session <= 45 ? 6 : p.session <= 60 ? 7 : 8;
-    const picked = weightedPick(day, have, target, exclude, maxDifficultyFor(p.level, p.difficultyOverride), p.top20Only !== false, p.disabledExercises || []);
+    const picked = weightedPick(day, have, target, exclude, maxDifficultyFor(p.level, p.difficultyOverride), p.top20Only !== false, p.disabledExercises || [], p.customExercises || {});
     const trend = weightTrend(p);
     const repDelta = trend === "cut" ? 2 : trend === "bulk" ? -1 : 0;
     const exercises = picked.map((ex, i) => {
@@ -837,9 +871,18 @@ body=${text.slice(0, 500)}`;
     const name = p.name ? p.name + ", " : "";
     return `${name}${(today == null ? void 0 : today.rest) ? "it's a rest day \u2014 good day to just move, stretch, and eat well." : `today's ${(today == null ? void 0 : today.focus) || "session"} is queued up \u2014 ${exNames.slice(0, 3).join(", ") || "check the Today tab"}.`} What do you want help with \u2014 the workout, or swapping something out?`;
   }
-  function plateLoad(total, units) {
-    const barW = units === "kg" ? 20 : 45;
-    if (!total || total <= barW) return { bar: barW, plates: [], leftover: 0, valid: total > 0 };
+  function visualTypeFor(ex) {
+    const equip = ex.equip || [];
+    if (ex.category === "Cardio" || equip.includes("Cardio machines")) return "cardio";
+    if (equip.includes("EZ bar + plates")) return "ezbar";
+    if (equip.includes("Barbell + plates")) return "barbell";
+    if (equip.includes("Dumbbells") || equip.includes("Kettlebells")) return "dumbbell";
+    if (equip.includes("Cable machine") || equip.includes("Leg machines")) return "machine";
+    return "bodyweight";
+  }
+  function plateLoad(total, units, barW) {
+    if (!total || total < 0) return { bar: barW, plates: [], leftover: 0, valid: total > 0 };
+    if (total <= barW) return { bar: barW, plates: [], leftover: 0, valid: true };
     let side = (total - barW) / 2;
     const out = [];
     for (const [w, color, fg] of PLATE_COLORS[units]) {
@@ -850,14 +893,54 @@ body=${text.slice(0, 500)}`;
     }
     return { bar: barW, plates: out, leftover: +side.toFixed(2), valid: true };
   }
+  function PlatesRow({ plates, size, barLabel }) {
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "barsteel" }), [...plates].reverse().map((p, i) => /* @__PURE__ */ React.createElement("div", { key: "l" + i, className: "plate", style: { background: p.color, height: size(p.w), width: Math.max(7, size(p.w) * 0.17) } }, /* @__PURE__ */ React.createElement("span", { style: { color: p.fg, transform: "rotate(-90deg)" } }, p.w))), /* @__PURE__ */ React.createElement("div", { className: "collar" }), barLabel, /* @__PURE__ */ React.createElement("div", { className: "collar" }), plates.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: "r" + i, className: "plate", style: { background: p.color, height: size(p.w), width: Math.max(7, size(p.w) * 0.17) } }, /* @__PURE__ */ React.createElement("span", { style: { color: p.fg, transform: "rotate(-90deg)" } }, p.w))), /* @__PURE__ */ React.createElement("div", { className: "barsteel" }));
+  }
   function PlateBar({ total, units }) {
-    const { bar, plates, leftover, valid } = plateLoad(total, units);
+    const barW = units === "kg" ? 20 : 45;
+    const { bar, plates, leftover, valid } = plateLoad(total, units, barW);
     if (!valid) return null;
     const size = (w) => {
       const max = units === "kg" ? 25 : 45;
       return 30 + w / max * 34;
     };
-    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "bar", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { className: "barsteel" }), [...plates].reverse().map((p, i) => /* @__PURE__ */ React.createElement("div", { key: "l" + i, className: "plate", style: { background: p.color, height: size(p.w), width: Math.max(7, size(p.w) * 0.17) } }, /* @__PURE__ */ React.createElement("span", { style: { color: p.fg, transform: "rotate(-90deg)" } }, p.w))), /* @__PURE__ */ React.createElement("div", { className: "collar" }), /* @__PURE__ */ React.createElement("div", { className: "barsteel", style: { flex: "0 0 42px" } }), /* @__PURE__ */ React.createElement("div", { className: "collar" }), plates.map((p, i) => /* @__PURE__ */ React.createElement("div", { key: "r" + i, className: "plate", style: { background: p.color, height: size(p.w), width: Math.max(7, size(p.w) * 0.17) } }, /* @__PURE__ */ React.createElement("span", { style: { color: p.fg, transform: "rotate(-90deg)" } }, p.w))), /* @__PURE__ */ React.createElement("div", { className: "barsteel" })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, textAlign: "center", color: "var(--iron)", marginTop: -4 } }, bar, units, " bar + ", plates.length ? [...new Set(plates.map((p) => p.w))].map((w) => `${plates.filter((p) => p.w === w).length}\xD7${w}`).join(" + ") + " per side" : "no plates", leftover > 0 && ` \xB7 ${leftover}${units}/side unmatched`));
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "bar", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(PlatesRow, { plates, size, barLabel: /* @__PURE__ */ React.createElement("div", { className: "barsteel", style: { flex: "0 0 42px" } }) })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, textAlign: "center", color: "var(--iron)", marginTop: -4 } }, bar, units, " bar + ", plates.length ? [...new Set(plates.map((p) => p.w))].map((w) => `${plates.filter((p) => p.w === w).length}\xD7${w}`).join(" + ") + " per side" : "no plates", leftover > 0 && ` \xB7 ${leftover}${units}/side unmatched`));
+  }
+  function EzBarViz({ total, units }) {
+    const barW = units === "kg" ? 10 : 22;
+    const { bar, plates, leftover, valid } = plateLoad(total, units, barW);
+    if (!valid) return null;
+    const size = (w) => {
+      const max = units === "kg" ? 25 : 45;
+      return 26 + w / max * 30;
+    };
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "bar", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(PlatesRow, { plates, size, barLabel: /* @__PURE__ */ React.createElement("svg", { width: "42", height: "16", viewBox: "0 0 42 16", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("path", { d: "M0 8 L8 8 L13 2 L21 14 L29 2 L34 8 L42 8", stroke: "#9AA1A8", strokeWidth: "4", fill: "none", strokeLinecap: "round", strokeLinejoin: "round" })) })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, textAlign: "center", color: "var(--iron)", marginTop: -4 } }, "EZ bar (~", bar, units, ") + ", plates.length ? [...new Set(plates.map((p) => p.w))].map((w) => `${plates.filter((p) => p.w === w).length}\xD7${w}`).join(" + ") + " per side" : "no plates", leftover > 0 && ` \xB7 ${leftover}${units}/side unmatched`));
+  }
+  function DumbbellViz({ weight, units }) {
+    const { plates } = plateLoad(+weight, units, 0);
+    const size = (w) => {
+      const max = units === "kg" ? 25 : 45;
+      return 20 + w / max * 22;
+    };
+    return /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "bar", "aria-hidden": "true" }, /* @__PURE__ */ React.createElement(PlatesRow, { plates, size, barLabel: /* @__PURE__ */ React.createElement("div", { className: "barsteel", style: { flex: "0 0 16px" } }) })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, textAlign: "center", color: "var(--iron)", marginTop: -4 } }, weight, units, " dumbbell \u2014 each hand"));
+  }
+  function MachineStackViz({ weight, units }) {
+    const blockCount = Math.min(8, Math.max(2, Math.round((+weight || 0) / 9)));
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column-reverse", gap: 2, alignItems: "center" }, "aria-hidden": "true" }, Array.from({ length: blockCount }).map((_, i) => {
+      const isBottom = i === 0;
+      return /* @__PURE__ */ React.createElement("div", { key: i, style: {
+        width: 64 - i * 1.5,
+        height: isBottom ? 18 : 9,
+        background: isBottom ? "var(--accent)" : "var(--steel)",
+        borderRadius: 1,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      } }, isBottom && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10, fontWeight: 700, color: "var(--accent-ink)" } }, weight, units));
+    })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, color: "var(--iron)", marginTop: 2 } }, "on the stack"));
+  }
+  function CardioTrailViz({ distance, unit }) {
+    return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("svg", { width: "100%", height: "34", viewBox: "0 0 200 34", "aria-hidden": "true", style: { maxWidth: 240 } }, /* @__PURE__ */ React.createElement("path", { d: "M4 26 Q 50 4, 100 18 T 196 10", fill: "none", stroke: "var(--line)", strokeWidth: "3", strokeDasharray: "1 8", strokeLinecap: "round" }), /* @__PURE__ */ React.createElement("circle", { cx: "4", cy: "26", r: "4", fill: "var(--accent)" }), /* @__PURE__ */ React.createElement("circle", { cx: "196", cy: "10", r: "4", fill: "var(--steel)" })), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, color: "var(--iron)" } }, distance, " ", unit || "km"));
   }
   var Stripe = ({ color }) => /* @__PURE__ */ React.createElement("div", { className: "stripe", style: { background: color } });
   function Spinner({ label }) {
@@ -885,7 +968,13 @@ body=${text.slice(0, 500)}`;
       avoid: "",
       onlyUse: "",
       goalWeight: "",
-      calorieGoal: ""
+      calorieGoal: "",
+      age: "",
+      sex: "",
+      heightUnit: "cm",
+      heightCm: "",
+      heightFt: "",
+      heightIn: ""
     });
     const set = (k, v) => setP((s) => ({ ...s, [k]: v }));
     const toggle = (k, v) => setP((s) => ({ ...s, [k]: s[k].includes(v) ? s[k].filter((x) => x !== v) : [...s[k], v] }));
@@ -900,7 +989,11 @@ body=${text.slice(0, 500)}`;
         title: "Build your split",
         ok: (p.splitConfig || defaultSplitConfig(p.days)).every((d) => d.rest || d.muscles.length > 0 && d.muscles.reduce((s, m) => s + m.weight, 0) === 100)
       }] : [],
-      { key: "targets", title: "Your weight & targets", ok: +p.weight > 0 }
+      {
+        key: "targets",
+        title: "You, your weight & targets",
+        ok: +p.weight > 0 && +p.age > 0 && (p.heightUnit === "cm" ? +p.heightCm > 0 : +p.heightFt > 0 || +p.heightIn > 0)
+      }
     ];
     const cur = steps[step];
     const finish = () => {
@@ -950,7 +1043,7 @@ body=${text.slice(0, 500)}`;
           className: "card flush",
           style: { textAlign: "left", border: selected ? "2px solid var(--ink)" : "1.5px solid var(--line)" }
         },
-        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, preset.name), selected && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10.5, fontWeight: 700, color: "var(--green)", letterSpacing: ".06em" } }, "SELECTED")),
+        /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, preset.name), selected && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10.5, fontWeight: 700, color: "var(--accent)", letterSpacing: ".06em" } }, "SELECTED")),
         /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 6, marginBottom: 0, lineHeight: 1.4 } }, preset.desc)
       );
     }), /* @__PURE__ */ React.createElement(
@@ -960,7 +1053,7 @@ body=${text.slice(0, 500)}`;
         className: "card flush",
         style: { textAlign: "left", border: p.splitChoice === "Custom" ? "2px solid var(--ink)" : "1.5px solid var(--line)" }
       },
-      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, "Custom"), p.splitChoice === "Custom" && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10.5, fontWeight: 700, color: "var(--green)", letterSpacing: ".06em" } }, "SELECTED")),
+      /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14.5 } }, "Custom"), p.splitChoice === "Custom" && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 10.5, fontWeight: 700, color: "var(--accent)", letterSpacing: ".06em" } }, "SELECTED")),
       /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 6, marginBottom: 0, lineHeight: 1.4 } }, "Build your own day-by-day split on the next step \u2014 pick muscles per day and set the weighting yourself.")
     )))), cur.key === "customSplit" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13, marginTop: -6 } }, "Pick which muscles each day trains and how much weight each gets. Percentages must add to 100 per training day. Use the \u2191 \u2193 arrows on a card to move it to a different weekday."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, PRESETS.map((preset) => /* @__PURE__ */ React.createElement("button", { key: preset.name, className: "chip", onClick: () => set("splitConfig", preset.build(p.days)) }, "Start from ", preset.name))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 12 } }, (p.splitConfig || defaultSplitConfig(p.days)).map((day, i) => {
       const list = p.splitConfig || defaultSplitConfig(p.days);
@@ -982,7 +1075,49 @@ body=${text.slice(0, 500)}`;
           onMoveDown: i < list.length - 1 ? () => swap(i, i + 1) : null
         }
       );
-    }))), cur.key === "targets" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("div", { className: "row" }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Current bodyweight"), /* @__PURE__ */ React.createElement(
+    }))), cur.key === "targets" && /* @__PURE__ */ React.createElement("div", { className: "stack" }, /* @__PURE__ */ React.createElement("div", { className: "row" }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Age"), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        type: "number",
+        min: "0",
+        value: p.age,
+        onChange: (e) => set("age", e.target.value),
+        placeholder: "Years",
+        autoFocus: true
+      }
+    )), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Sex ", /* @__PURE__ */ React.createElement("span", { className: "muted", style: { textTransform: "none", letterSpacing: "normal", fontWeight: 500 } }, "(optional)")), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [["male", "Male"], ["female", "Female"], ["", "Prefer not to say"]].map(([v, label]) => /* @__PURE__ */ React.createElement("button", { key: v || "unset", className: "chip" + (p.sex === v ? " on" : ""), onClick: () => set("sex", v) }, label))))), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: -8 } }, "Age, height, and sex let us estimate your resting calorie burn (BMR) for a more accurate daily calorie target. Sex affects the formula slightly \u2014 skip it and we'll use a neutral average."), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Height"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap", style: { marginBottom: 9 } }, ["cm", "ft"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + (p.heightUnit === u ? " on" : ""), onClick: () => set("heightUnit", u) }, u === "cm" ? "cm" : "ft / in"))), p.heightUnit === "cm" ? /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        type: "number",
+        min: "0",
+        value: p.heightCm,
+        onChange: (e) => set("heightCm", e.target.value),
+        placeholder: "Height in cm",
+        style: { maxWidth: 200 }
+      }
+    ) : /* @__PURE__ */ React.createElement("div", { className: "row", style: { maxWidth: 260 } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        type: "number",
+        min: "0",
+        value: p.heightFt,
+        onChange: (e) => set("heightFt", e.target.value),
+        placeholder: "Feet"
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        type: "number",
+        min: "0",
+        value: p.heightIn,
+        onChange: (e) => set("heightIn", e.target.value),
+        placeholder: "Inches"
+      }
+    ))), /* @__PURE__ */ React.createElement("div", { className: "row" }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Current bodyweight"), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "mono",
@@ -990,10 +1125,9 @@ body=${text.slice(0, 500)}`;
         min: "0",
         value: p.weight,
         onChange: (e) => set("weight", e.target.value),
-        placeholder: "Enter your weight",
-        autoFocus: true
+        placeholder: "Enter your weight"
       }
-    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Units"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, ["kg", "lb"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + (p.units === u ? " on" : ""), onClick: () => set("units", u) }, u))))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Goal weight ", /* @__PURE__ */ React.createElement("span", { className: "muted", style: { textTransform: "none", letterSpacing: "normal", fontWeight: 500 } }, "(optional)")), /* @__PURE__ */ React.createElement(
+    )), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Units"), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, ["kg", "lb", "st"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + (p.units === u ? " on" : ""), onClick: () => set("units", u) }, u))))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Goal weight ", /* @__PURE__ */ React.createElement("span", { className: "muted", style: { textTransform: "none", letterSpacing: "normal", fontWeight: 500 } }, "(optional)")), /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "mono",
@@ -1065,7 +1199,8 @@ body=${text.slice(0, 500)}`;
     var _a;
     const [q, setQ] = useState("");
     const meta = MUSCLE_BY_KEY[ex.muscleKey];
-    const pool2 = meta ? ((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool : [];
+    const customList = customPoolEntries(profile == null ? void 0 : profile.customExercises, ex.muscleKey);
+    const pool2 = meta ? [...((_a = meta.fullPool) == null ? void 0 : _a.length) ? meta.fullPool : meta.pool, ...customList] : customList;
     const query = q.trim().toLowerCase();
     const results = query ? pool2.filter((e) => e.name.toLowerCase().includes(query) && e.name !== ex.name).slice(0, 8) : [];
     return /* @__PURE__ */ React.createElement("div", { className: "sheet", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "sheetbody", onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": "Swap " + ex.name }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Swap this exercise"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 22, marginTop: 6, lineHeight: 1.1 } }, ex.name)), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onClose }, "Close")), /* @__PURE__ */ React.createElement("button", { className: "btn", style: { marginTop: 20, width: "100%" }, onClick: onGenerate }, "Generate a swap for me"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 8 } }, "Picks a random ", (meta == null ? void 0 : meta.label) || "matching", " exercise for you, respecting your equipment and settings."), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 22 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Or search the library"), /* @__PURE__ */ React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: `Search ${(meta == null ? void 0 : meta.label) || ""} exercises\u2026`, autoFocus: true }), query && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 10 } }, results.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 13, padding: "10px 0" } }, 'No matches for "', q, '".'), results.map((e) => /* @__PURE__ */ React.createElement("button", { key: e.name, className: "card flush", style: { width: "100%", textAlign: "left", marginBottom: 8, padding: "12px 14px" }, onClick: () => onPick(e.name) }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 14 } }, e.name)))))));
@@ -1089,10 +1224,33 @@ body=${text.slice(0, 500)}`;
     const doneCount = sets.filter((s) => s.done).length;
     const complete = sets.length > 0 && doneCount === sets.length;
     const lastWeight = (_a = [...sets].reverse().find((s) => s.w)) == null ? void 0 : _a.w;
+    const visualType = visualTypeFor(ex);
+    const isCardio = visualType === "cardio";
+    const showViz = (profile == null ? void 0 : profile.showWeightViz) !== false;
     useEffect(() => {
       if (complete) setOpen(false);
     }, [complete]);
-    return /* @__PURE__ */ React.createElement("div", { className: "exrow" }, /* @__PURE__ */ React.createElement("div", { className: "exhead" }, /* @__PURE__ */ React.createElement("span", { className: "exnum mono" }, String(idx + 1).padStart(2, "0")), complete && /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { color: "var(--green)", fontWeight: 700 } }, "\u2713"), /* @__PURE__ */ React.createElement("span", { className: "exname", style: complete ? { color: "var(--steel)", textDecoration: "line-through" } : void 0 }, swapping ? "Finding a replacement\u2026" : ex.name), /* @__PURE__ */ React.createElement("span", { className: "exspec mono" }, sets.length, "\xD7", ex.reps)), /* @__PURE__ */ React.createElement("div", { className: "exmeta" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, "rest ", ex.rest), doneCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--green)", fontWeight: 700 } }, doneCount, "/", sets.length, " logged"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => setOpen((o) => !o) }, open ? "Hide log" : complete ? "Log again" : "Log sets"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => onForm(ex) }, "Show form"), onSwapExercise && /* @__PURE__ */ React.createElement("button", { className: "linkish", disabled: swapping, onClick: () => setSwapModal(true), title: "Can't do this one? Swap it for another exercise that trains the same muscle." }, swapping ? "Swapping\u2026" : "Swap")), open && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 14, paddingLeft: 36 } }, /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Set"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Weight (", units, ")"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Reps"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Done"), /* @__PURE__ */ React.createElement("div", null)), sets.map((s, i) => /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5", key: i }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, color: "var(--steel)" } }, i + 1), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "decimal", value: s.w, onChange: (e) => update(i, { w: e.target.value }), placeholder: "\u2013", "aria-label": `Set ${i + 1} weight` }), /* @__PURE__ */ React.createElement("input", { className: "mono", inputMode: "numeric", value: s.r, onChange: (e) => update(i, { r: e.target.value }), placeholder: String(ex.reps || ""), "aria-label": `Set ${i + 1} reps` }), /* @__PURE__ */ React.createElement("button", { className: "tick" + (s.done ? " done" : ""), onClick: () => update(i, { done: !s.done }), "aria-label": `Mark set ${i + 1} complete`, "aria-pressed": s.done }, "\u2713"), /* @__PURE__ */ React.createElement("button", { className: "setremove", onClick: () => removeSet(i), disabled: sets.length <= 1, "aria-label": `Remove set ${i + 1}` }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", style: { marginTop: 10 }, onClick: addSet }, "+ Add set"), lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "8px 12px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the bar \u2014 ", lastWeight, units), /* @__PURE__ */ React.createElement(PlateBar, { total: +lastWeight, units }))), swapModal && /* @__PURE__ */ React.createElement(
+    return /* @__PURE__ */ React.createElement("div", { className: "exrow" }, /* @__PURE__ */ React.createElement("div", { className: "exhead" }, /* @__PURE__ */ React.createElement("span", { className: "exnum mono" }, String(idx + 1).padStart(2, "0")), complete && /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true", style: { color: "var(--accent)", fontWeight: 700 } }, "\u2713"), /* @__PURE__ */ React.createElement("span", { className: "exname", style: complete ? { color: "var(--steel)", textDecoration: "line-through" } : void 0 }, swapping ? "Finding a replacement\u2026" : ex.name), /* @__PURE__ */ React.createElement("span", { className: "exspec mono" }, isCardio ? ex.reps : `${sets.length}\xD7${ex.reps}`)), /* @__PURE__ */ React.createElement("div", { className: "exmeta" }, /* @__PURE__ */ React.createElement("span", { className: "mono" }, "rest ", ex.rest), doneCount > 0 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { color: "var(--accent)", fontWeight: 700 } }, doneCount, "/", sets.length, " logged"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => setOpen((o) => !o) }, open ? "Hide log" : complete ? "Log again" : "Log sets"), /* @__PURE__ */ React.createElement("button", { className: "linkish", onClick: () => onForm(ex) }, "Show form"), onSwapExercise && /* @__PURE__ */ React.createElement("button", { className: "linkish", disabled: swapping, onClick: () => setSwapModal(true), title: "Can't do this one? Swap it for another exercise that trains the same muscle." }, swapping ? "Swapping\u2026" : "Swap")), open && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 14, paddingLeft: 36 } }, /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, isCardio ? "Lap" : "Set"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, isCardio ? `Distance (km)` : `Weight (${units})`), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, isCardio ? "Time" : "Reps"), /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Done"), /* @__PURE__ */ React.createElement("div", null)), sets.map((s, i) => /* @__PURE__ */ React.createElement("div", { className: "setgrid setgrid5", key: i }, /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontWeight: 700, color: "var(--steel)" } }, i + 1), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        inputMode: "decimal",
+        value: s.w,
+        onChange: (e) => update(i, { w: e.target.value }),
+        placeholder: isCardio ? "\u2013" : "\u2013",
+        "aria-label": `${isCardio ? "Lap" : "Set"} ${i + 1} ${isCardio ? "distance" : "weight"}`
+      }
+    ), /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        inputMode: isCardio ? "text" : "numeric",
+        value: s.r,
+        onChange: (e) => update(i, { r: e.target.value }),
+        placeholder: isCardio ? "mm:ss" : String(ex.reps || ""),
+        "aria-label": `${isCardio ? "Lap" : "Set"} ${i + 1} ${isCardio ? "time" : "reps"}`
+      }
+    ), /* @__PURE__ */ React.createElement("button", { className: "tick" + (s.done ? " done" : ""), onClick: () => update(i, { done: !s.done }), "aria-label": `Mark set ${i + 1} complete`, "aria-pressed": s.done }, "\u2713"), /* @__PURE__ */ React.createElement("button", { className: "setremove", onClick: () => removeSet(i), disabled: sets.length <= 1, "aria-label": `Remove set ${i + 1}` }, "\xD7"))), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", style: { marginTop: 10 }, onClick: addSet }, "+ Add ", isCardio ? "lap" : "set"), showViz && visualType === "barbell" && lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "8px 12px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the bar \u2014 ", lastWeight, units), /* @__PURE__ */ React.createElement(PlateBar, { total: +lastWeight, units })), showViz && visualType === "ezbar" && lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "8px 12px 4px" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the EZ bar \u2014 ", lastWeight, units), /* @__PURE__ */ React.createElement(EzBarViz, { total: +lastWeight, units })), showViz && visualType === "dumbbell" && lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(DumbbellViz, { weight: lastWeight, units })), showViz && visualType === "machine" && lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(MachineStackViz, { weight: lastWeight, units })), showViz && isCardio && lastWeight && +lastWeight > 0 && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 16, background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement(CardioTrailViz, { distance: lastWeight, unit: "km" }))), swapModal && /* @__PURE__ */ React.createElement(
       SwapModal,
       {
         ex,
@@ -1114,11 +1272,16 @@ body=${text.slice(0, 500)}`;
     const color = dayColor(dayIndex);
     const [completing, setCompleting] = useState(false);
     const [duration, setDuration] = useState("");
+    const [caloriesBurned, setCaloriesBurned] = useState("");
+    const [expanded, setExpanded] = useState(false);
     if (!workout) return /* @__PURE__ */ React.createElement("div", { className: "card flush" }, /* @__PURE__ */ React.createElement(Spinner, { label: "Writing this session" }));
     if (workout.rest) {
       return /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden" } }, /* @__PURE__ */ React.createElement(Stripe, { color: "#8A8F98" }), /* @__PURE__ */ React.createElement("div", { className: "flush", style: { padding: 26 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Rest day"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 26, marginTop: 8 } }, "Recover"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 14, marginTop: 10, maxWidth: 460 } }, "Muscle is built between sessions, not during them. Walk, stretch, sleep, eat your protein. Nothing else required today.")));
     }
-    return /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden" } }, /* @__PURE__ */ React.createElement(Stripe, { color }), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 20px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Session"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 26, marginTop: 6, lineHeight: 1 } }, workout.focus)), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onSwap, disabled: swapping }, swapping ? "Rebuilding\u2026" : "Give me another")), ((_a = workout.warmup) == null ? void 0 : _a.length) > 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 20px", borderBottom: "1.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Warm-up"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, workout.warmup.map((w, i) => {
+    if (completedToday && !expanded) {
+      return /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden" } }, /* @__PURE__ */ React.createElement(Stripe, { color: "var(--accent)" }), /* @__PURE__ */ React.createElement("div", { style: { padding: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Session complete"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 24, marginTop: 6, lineHeight: 1 } }, workout.focus), /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 12.5, color: "var(--accent)", fontWeight: 700, marginTop: 8 } }, "\u2713 ", completedToday.durationMin, " min", completedToday.calories ? ` \xB7 ${completedToday.calories} kcal` : "", " \xB7 ", (workout.exercises || []).length, " exercises")), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => setExpanded(true) }, "Show what I did")));
+    }
+    return /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden" } }, /* @__PURE__ */ React.createElement(Stripe, { color }), /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 20px 14px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 14, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, "Session"), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 26, marginTop: 6, lineHeight: 1 } }, workout.focus)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8 } }, completedToday && expanded && /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => setExpanded(false) }, "Collapse"), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onSwap, disabled: swapping }, swapping ? "Rebuilding\u2026" : "Give me another"))), ((_a = workout.warmup) == null ? void 0 : _a.length) > 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 20px", borderBottom: "1.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 8 } }, "Warm-up"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap" } }, workout.warmup.map((w, i) => {
       const key = dayKey + "|warmup|" + i;
       const done = !!(logs.prep && logs.prep[key]);
       return /* @__PURE__ */ React.createElement(
@@ -1133,9 +1296,9 @@ body=${text.slice(0, 500)}`;
             display: "flex",
             alignItems: "center",
             gap: 6,
-            background: done ? "var(--green)" : "var(--panel2)",
-            color: done ? "#0A0A0C" : "var(--ink)",
-            border: "1.5px solid " + (done ? "var(--green)" : "var(--line)")
+            background: done ? "var(--accent)" : "var(--panel2)",
+            color: done ? "var(--accent-ink)" : "var(--ink)",
+            border: "1.5px solid " + (done ? "var(--accent)" : "var(--line)")
           }
         },
         /* @__PURE__ */ React.createElement("span", { "aria-hidden": "true" }, done ? "\u2713" : "\u25CB"),
@@ -1153,7 +1316,7 @@ body=${text.slice(0, 500)}`;
         /* @__PURE__ */ React.createElement("span", { className: "tick" + (done ? " done" : ""), style: { width: 24, height: 24, fontSize: 13, flexShrink: 0 }, "aria-hidden": "true" }, "\u2713"),
         /* @__PURE__ */ React.createElement("span", null, /* @__PURE__ */ React.createElement("span", { className: "eyebrow" }, "Cooldown"), " ", /* @__PURE__ */ React.createElement("span", { style: { fontSize: 14 } }, workout.finisher))
       ));
-    })(), /* @__PURE__ */ React.createElement("div", { style: { padding: 20, borderTop: "1.5px solid var(--line)" } }, completedToday && !completing && /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 12.5, color: "var(--green)", fontWeight: 700, marginBottom: 12 } }, "\u2713 Logged \u2014 ", completedToday.durationMin, " min"), !completing && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => setCompleting(true) }, completedToday ? "Log again" : "Complete workout"), completing && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "How long did that take?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(
+    })(), /* @__PURE__ */ React.createElement("div", { style: { padding: 20, borderTop: "1.5px solid var(--line)" } }, completedToday && !completing && /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 12.5, color: "var(--accent)", fontWeight: 700, marginBottom: 12 } }, "\u2713 Logged \u2014 ", completedToday.durationMin, " min", completedToday.calories ? ` \xB7 ${completedToday.calories} kcal` : ""), !completing && /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: () => setCompleting(true) }, completedToday ? "Log again" : "Complete workout"), completing && /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "How long did that take?"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "mono",
@@ -1164,15 +1327,26 @@ body=${text.slice(0, 500)}`;
         placeholder: "Minutes",
         style: { maxWidth: 140 }
       }
+    )), /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Calories burned (if you know it \u2014 from a watch, machine, etc.)"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement(
+      "input",
+      {
+        className: "mono",
+        inputMode: "numeric",
+        value: caloriesBurned,
+        onChange: (e) => setCaloriesBurned(e.target.value),
+        placeholder: "Optional",
+        style: { maxWidth: 140 }
+      }
     ), /* @__PURE__ */ React.createElement(
       "button",
       {
         className: "btn",
         disabled: !duration,
         onClick: () => {
-          onComplete(+duration);
+          onComplete(+duration, caloriesBurned ? +caloriesBurned : null);
           setCompleting(false);
           setDuration("");
+          setCaloriesBurned("");
         }
       },
       "Save & finish"
@@ -1318,15 +1492,15 @@ body=${text.slice(0, 500)}`;
   }
   var MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   function HistoryDetail({ entry, units, onClose }) {
-    return /* @__PURE__ */ React.createElement("div", { className: "sheet", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "sheetbody", onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": entry.date }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, entry.dayName, " \xB7 ", entry.date), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 23, marginTop: 6, lineHeight: 1.1 } }, entry.focus)), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onClose }, "Close")), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 13, marginTop: 14, color: "var(--iron)" } }, "Time taken: ", entry.durationMin, " min"), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, entry.exercises.map((ex, i) => {
+    return /* @__PURE__ */ React.createElement("div", { className: "sheet", onClick: onClose }, /* @__PURE__ */ React.createElement("div", { className: "sheetbody", onClick: (e) => e.stopPropagation(), role: "dialog", "aria-label": entry.date }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 16 } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, entry.dayName, " \xB7 ", entry.date), /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 23, marginTop: 6, lineHeight: 1.1 } }, entry.focus)), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: onClose }, "Close")), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 13, marginTop: 14, color: "var(--iron)" } }, "Time taken: ", entry.durationMin, " min", entry.calories ? ` \xB7 ${entry.calories} kcal burned` : ""), /* @__PURE__ */ React.createElement("div", { style: { marginTop: 20 } }, entry.exercises.map((ex, i) => {
       var _a;
       return /* @__PURE__ */ React.createElement("div", { key: i, style: { padding: "13px 0", borderBottom: "1.5px solid var(--line)" } }, /* @__PURE__ */ React.createElement("div", { style: { fontWeight: 700, fontSize: 15 } }, ex.name), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 12, color: "var(--iron)", marginTop: 3 } }, "target ", ex.targetSets, "\xD7", ex.targetReps), ((_a = ex.sets) == null ? void 0 : _a.length) > 0 ? /* @__PURE__ */ React.createElement("div", { style: { marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6 } }, ex.sets.map((s, j) => /* @__PURE__ */ React.createElement("span", { key: j, className: "mono", style: {
         fontSize: 12,
         padding: "4px 9px",
         borderRadius: 2,
-        background: s.done ? "var(--green)" : "var(--panel2)",
-        color: s.done ? "#0A0A0C" : "var(--iron)",
-        border: "1.5px solid " + (s.done ? "var(--green)" : "var(--line)")
+        background: s.done ? "var(--accent)" : "var(--panel2)",
+        color: s.done ? "var(--accent-ink)" : "var(--iron)",
+        border: "1.5px solid " + (s.done ? "var(--accent)" : "var(--line)")
       } }, s.w || "\u2013", units, " \xD7 ", s.r || "\u2013"))) : /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: 6 } }, "No sets logged for this exercise."));
     }))));
   }
@@ -1360,16 +1534,16 @@ body=${text.slice(0, 500)}`;
             borderRadius: 2,
             fontSize: 12,
             fontFamily: "'JetBrains Mono',monospace",
-            background: has ? "var(--green)" : "var(--panel2)",
-            color: has ? "#0A0A0C" : "var(--iron)",
-            border: "1.5px solid " + (isToday ? "var(--ink)" : has ? "var(--green)" : "var(--line)"),
+            background: has ? "var(--accent)" : "var(--panel2)",
+            color: has ? "var(--accent-ink)" : "var(--iron)",
+            border: "1.5px solid " + (isToday ? "var(--ink)" : has ? "var(--accent)" : "var(--line)"),
             cursor: has ? "pointer" : "default",
             fontWeight: isToday ? 700 : 500
           }
         },
         day
       );
-    })))), entries.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, margin: "26px 0 14px" } }, "Recent sessions"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 } }, entries.slice(0, 12).map((entry) => /* @__PURE__ */ React.createElement("button", { key: entry.date, className: "card", style: { textAlign: "left", padding: 15 }, onClick: () => setSelected(entry) }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, entry.dayName, " \xB7 ", entry.date), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14.5, fontWeight: 700, marginTop: 5 } }, entry.focus), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11.5, color: "var(--iron)", marginTop: 7 } }, entry.durationMin, " min \xB7 ", entry.exercises.length, " exercises"))))), entries.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 14, marginTop: 20 } }, 'No completed workouts yet \u2014 hit "Complete workout" on Today once you finish a session.'), selected && /* @__PURE__ */ React.createElement(HistoryDetail, { entry: selected, units, onClose: () => setSelected(null) }));
+    })))), entries.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("h2", { style: { fontSize: 20, margin: "26px 0 14px" } }, "Recent sessions"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(240px,1fr))", gap: 14 } }, entries.slice(0, 12).map((entry) => /* @__PURE__ */ React.createElement("button", { key: entry.date, className: "card", style: { textAlign: "left", padding: 15 }, onClick: () => setSelected(entry) }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow" }, entry.dayName, " \xB7 ", entry.date), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 14.5, fontWeight: 700, marginTop: 5 } }, entry.focus), /* @__PURE__ */ React.createElement("div", { className: "mono", style: { fontSize: 11.5, color: "var(--iron)", marginTop: 7 } }, entry.durationMin, " min \xB7 ", entry.exercises.length, " exercises", entry.calories ? ` \xB7 ${entry.calories} kcal` : ""))))), entries.length === 0 && /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 14, marginTop: 20 } }, 'No completed workouts yet \u2014 hit "Complete workout" on Today once you finish a session.'), selected && /* @__PURE__ */ React.createElement(HistoryDetail, { entry: selected, units, onClose: () => setSelected(null) }));
   }
   function ProgressView({ profile, setProfile, logs, setLogs, units, totalVolume, setsDone, onResetAll }) {
     var _a;
@@ -1386,7 +1560,8 @@ body=${text.slice(0, 500)}`;
     const currentWeight = ((_a = logs.body) == null ? void 0 : _a.length) ? logs.body[logs.body.length - 1].v : +profile.weight;
     const goal = profile.goalWeight;
     const delta = goal ? +(goal - currentWeight).toFixed(1) : null;
-    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 } }, /* @__PURE__ */ React.createElement(Kpi, { n: setsDone, l: "Sets logged", color: "#FF1E3C" }), /* @__PURE__ */ React.createElement(Kpi, { n: Math.round(totalVolume).toLocaleString(), l: `Volume (${units})`, color: "#FF6B7A" }), /* @__PURE__ */ React.createElement(Kpi, { n: daysTrained, l: "Days trained", color: "#C8102E" }), /* @__PURE__ */ React.createElement(Kpi, { n: (logs.body || []).length, l: "Weigh-ins", color: "#FF8A99" })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 } }, /* @__PURE__ */ React.createElement(Sparkline, { data: bodyData, color: "#FF6B7A", label: `Bodyweight (${units})`, unit: units }), /* @__PURE__ */ React.createElement(Sparkline, { data: volData, color: "#C8102E", label: "Session volume", unit: "" })), /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden", marginTop: 20, maxWidth: 460 } }, /* @__PURE__ */ React.createElement(Stripe, { color: "var(--accent)" }), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Goal weight"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(
+    const bmr = computeBMR(profile);
+    return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 14, marginBottom: 22 } }, /* @__PURE__ */ React.createElement(Kpi, { n: setsDone, l: "Sets logged", color: "#FF1E3C" }), /* @__PURE__ */ React.createElement(Kpi, { n: Math.round(totalVolume).toLocaleString(), l: `Volume (${units})`, color: "#FF6B7A" }), /* @__PURE__ */ React.createElement(Kpi, { n: daysTrained, l: "Days trained", color: "#C8102E" }), /* @__PURE__ */ React.createElement(Kpi, { n: (logs.body || []).length, l: "Weigh-ins", color: "#FF8A99" }), bmr && /* @__PURE__ */ React.createElement(Kpi, { n: bmr.toLocaleString(), l: "Resting burn (kcal/day)", color: "#B0102A" })), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 16 } }, /* @__PURE__ */ React.createElement(Sparkline, { data: bodyData, color: "#FF6B7A", label: `Bodyweight (${units})`, unit: units }), /* @__PURE__ */ React.createElement(Sparkline, { data: volData, color: "#C8102E", label: "Session volume", unit: "" })), /* @__PURE__ */ React.createElement("div", { className: "card", style: { overflow: "hidden", marginTop: 20, maxWidth: 460 } }, /* @__PURE__ */ React.createElement(Stripe, { color: "var(--accent)" }), /* @__PURE__ */ React.createElement("div", { style: { padding: 18 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 10 } }, "Goal weight"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10 } }, /* @__PURE__ */ React.createElement(
       "input",
       {
         className: "mono",
@@ -1428,10 +1603,13 @@ body=${text.slice(0, 500)}`;
     const [level, setLevel] = useState(profile.level);
     const [difficultyOverride, setDifficultyOverride] = useState(profile.difficultyOverride || null);
     const [top20Only, setTop20Only] = useState(profile.top20Only !== false);
+    const [showWeightViz, setShowWeightViz] = useState(profile.showWeightViz !== false);
     const [days, setDays] = useState(profile.days);
     const [session, setSession] = useState(profile.session);
     const [splitDraft, setSplitDraft] = useState(profile.splitConfig || defaultSplitConfig(profile.days));
     const [disabled, setDisabled] = useState(new Set(profile.disabledExercises || []));
+    const [customExercises, setCustomExercises] = useState(profile.customExercises || {});
+    const [customInput, setCustomInput] = useState({});
     const [dirty, setDirty] = useState(false);
     const [openKey, setOpenKey] = useState(null);
     const [q, setQ] = useState("");
@@ -1442,6 +1620,26 @@ body=${text.slice(0, 500)}`;
       };
     }, [dirty, dirtyRef]);
     const touch = () => setDirty(true);
+    const addCustomExercise = (muscleKey, name) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      setCustomExercises((prev) => {
+        const list = prev[muscleKey] || [];
+        if (list.some((n) => n.toLowerCase() === trimmed.toLowerCase())) return prev;
+        return { ...prev, [muscleKey]: [...list, trimmed] };
+      });
+      setCustomInput((prev) => ({ ...prev, [muscleKey]: "" }));
+      touch();
+    };
+    const deleteCustomExercise = (muscleKey, name) => {
+      setCustomExercises((prev) => ({ ...prev, [muscleKey]: (prev[muscleKey] || []).filter((n) => n !== name) }));
+      setDisabled((prev) => {
+        const next = new Set(prev);
+        next.delete(name);
+        return next;
+      });
+      touch();
+    };
     const toggleEquip = (v) => {
       setEquipment((s) => s.includes(v) ? s.filter((x) => x !== v) : [...s, v]);
       touch();
@@ -1503,7 +1701,8 @@ body=${text.slice(0, 500)}`;
         days,
         session,
         splitConfig: splitDraft,
-        disabledExercises: [...disabled]
+        disabledExercises: [...disabled],
+        customExercises
       };
       setProfile(updated);
       setDirty(false);
@@ -1521,7 +1720,11 @@ body=${text.slice(0, 500)}`;
     } }, "Auto (", level, ")"), DIFFICULTY_ORDER.map((d) => /* @__PURE__ */ React.createElement("button", { key: d, className: "chip" + (difficultyOverride === d ? " on" : ""), onClick: () => {
       setDifficultyOverride(d);
       touch();
-    } }, d[0].toUpperCase() + d.slice(1))))), /* @__PURE__ */ React.createElement("div", { className: "card flush", style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Exercise selection"), /* @__PURE__ */ React.createElement("button", { className: "dayswitch", onClick: toggleTop15, "aria-pressed": top20Only }, /* @__PURE__ */ React.createElement("span", { className: "lbl" + (!top20Only ? " on" : "") }, "Full library"), /* @__PURE__ */ React.createElement("span", { className: "switch-track" + (top20Only ? " on" : "") }, /* @__PURE__ */ React.createElement("span", { className: "switch-knob" })), /* @__PURE__ */ React.createElement("span", { className: "lbl" + (top20Only ? " on" : "") }, "Top 15 only"))), /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { margin: "24px 0 10px" } }, "Split \u2014 pick muscles per day and set weights"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: -6, marginBottom: 14, maxWidth: 560 } }, "Presets always start with day 1 on Monday, but use the \u2191 \u2193 arrows on any card to shift it to a different weekday \u2014 e.g. move chest day from Monday to Tuesday or Friday."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap", style: { marginBottom: 14 } }, PRESETS.map((preset) => /* @__PURE__ */ React.createElement("button", { key: preset.name, className: "chip", onClick: () => applyPreset(preset.name) }, preset.name))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14, marginBottom: 24 } }, splitDraft.map((day, i) => /* @__PURE__ */ React.createElement(
+    } }, d[0].toUpperCase() + d.slice(1))))), /* @__PURE__ */ React.createElement("div", { className: "card flush", style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Exercise selection"), /* @__PURE__ */ React.createElement("button", { className: "dayswitch", onClick: toggleTop15, "aria-pressed": top20Only }, /* @__PURE__ */ React.createElement("span", { className: "lbl" + (!top20Only ? " on" : "") }, "Full library"), /* @__PURE__ */ React.createElement("span", { className: "switch-track" + (top20Only ? " on" : "") }, /* @__PURE__ */ React.createElement("span", { className: "switch-knob" })), /* @__PURE__ */ React.createElement("span", { className: "lbl" + (top20Only ? " on" : "") }, "Top 15 only"))), /* @__PURE__ */ React.createElement("div", { className: "card flush", style: { marginBottom: 14 } }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Weight visuals"), /* @__PURE__ */ React.createElement("button", { className: "dayswitch", onClick: () => {
+      const next = !showWeightViz;
+      setShowWeightViz(next);
+      setProfile((prev) => ({ ...prev, showWeightViz: next }));
+    }, "aria-pressed": showWeightViz }, /* @__PURE__ */ React.createElement("span", { className: "lbl" + (!showWeightViz ? " on" : "") }, "Off"), /* @__PURE__ */ React.createElement("span", { className: "switch-track" + (showWeightViz ? " on" : "") }, /* @__PURE__ */ React.createElement("span", { className: "switch-knob" })), /* @__PURE__ */ React.createElement("span", { className: "lbl" + (showWeightViz ? " on" : "") }, "On")), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginTop: 10, marginBottom: 10 } }, "Shows a plate/dumbbell/stack graphic under each exercise's set log, matching whatever weight you enter. Applies immediately \u2014 here's what it looks like:"), /* @__PURE__ */ React.createElement("div", { style: { background: "var(--panel2)", border: "1.5px solid var(--line)", borderRadius: 2, padding: showWeightViz ? "8px 12px 4px" : "16px", opacity: showWeightViz ? 1 : 0.4, transition: "opacity .15s" } }, showWeightViz ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 2 } }, "Load the bar \u2014 60kg"), /* @__PURE__ */ React.createElement(PlateBar, { total: 60, units: "kg" })) : /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, textAlign: "center", margin: 0 } }, "No graphic \u2014 just the numbers you log"))), /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { margin: "24px 0 10px" } }, "Split \u2014 pick muscles per day and set weights"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: -6, marginBottom: 14, maxWidth: 560 } }, "Presets always start with day 1 on Monday, but use the \u2191 \u2193 arrows on any card to shift it to a different weekday \u2014 e.g. move chest day from Monday to Tuesday or Friday."), /* @__PURE__ */ React.createElement("div", { className: "chipwrap", style: { marginBottom: 14 } }, PRESETS.map((preset) => /* @__PURE__ */ React.createElement("button", { key: preset.name, className: "chip", onClick: () => applyPreset(preset.name) }, preset.name))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(280px,1fr))", gap: 14, marginBottom: 24 } }, splitDraft.map((day, i) => /* @__PURE__ */ React.createElement(
       DayEditor,
       {
         key: i,
@@ -1531,9 +1734,10 @@ body=${text.slice(0, 500)}`;
         onMoveUp: i > 0 ? () => swapDaySlots(i, i - 1) : null,
         onMoveDown: i < splitDraft.length - 1 ? () => swapDaySlots(i, i + 1) : null
       }
-    ))), /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { margin: "24px 0 10px" } }, "Exercise library \u2014 ", top20Only ? "Top 15 only is active \u2014 everything outside it is switched off below" : "toggle any exercise off"), /* @__PURE__ */ React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search exercises\u2026", style: { marginBottom: 14 } }), MUSCLE_META.map((m) => {
+    ))), /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { margin: "24px 0 10px" } }, "Exercise library \u2014 ", top20Only ? "Top 15 only is active \u2014 everything outside it is switched off below" : "toggle any exercise off, or add your own"), /* @__PURE__ */ React.createElement("input", { value: q, onChange: (e) => setQ(e.target.value), placeholder: "Search exercises\u2026", style: { marginBottom: 14 } }), MUSCLE_META.map((m) => {
       var _a;
-      const fullList = ((_a = m.fullPool) == null ? void 0 : _a.length) ? m.fullPool : m.pool;
+      const customList = (customExercises[m.key] || []).map((name) => ({ name, equip: inferEquip(name), custom: true }));
+      const fullList = [...((_a = m.fullPool) == null ? void 0 : _a.length) ? m.fullPool : m.pool, ...customList];
       const top20Names = new Set(m.pool.map((e) => e.name));
       const diffByName = Object.fromEntries(m.pool.map((e) => [e.name, e.difficulty]));
       const filtered = q ? fullList.filter((e) => e.name.toLowerCase().includes(q.toLowerCase())) : fullList;
@@ -1545,8 +1749,19 @@ body=${text.slice(0, 500)}`;
         const difficulty = diffByName[e.name];
         const withinLevel = !difficulty || DIFFICULTY_ORDER.indexOf(difficulty) <= maxDiff;
         const on = !disabled.has(e.name);
-        return /* @__PURE__ */ React.createElement("div", { key: e.name, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1.5px solid var(--line)", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, opacity: withinLevel && on ? 1 : 0.4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, e.name, isTop20 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, fontWeight: 700, letterSpacing: ".05em", padding: "2px 6px", borderRadius: 2, background: "var(--accent)", color: "var(--accent-ink)" } }, "TOP 15"), difficulty && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", padding: "2px 6px", borderRadius: 2, color: "#fff", background: DIFF_COLOR[difficulty] } }, difficulty)), /* @__PURE__ */ React.createElement("button", { className: "dayswitch", onClick: () => toggleExercise(e.name), "aria-pressed": on, style: { flexShrink: 0 } }, /* @__PURE__ */ React.createElement("span", { className: "switch-track" + (on ? " on" : "") }, /* @__PURE__ */ React.createElement("span", { className: "switch-knob" }))));
-      })));
+        return /* @__PURE__ */ React.createElement("div", { key: e.name, style: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1.5px solid var(--line)", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13.5, opacity: withinLevel && on ? 1 : 0.4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" } }, e.name, e.custom && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, fontWeight: 700, letterSpacing: ".05em", padding: "2px 6px", borderRadius: 2, background: "var(--panel2)", border: "1.5px solid var(--line)", color: "var(--iron)" } }, "CUSTOM"), isTop20 && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, fontWeight: 700, letterSpacing: ".05em", padding: "2px 6px", borderRadius: 2, background: "var(--accent)", color: "var(--accent-ink)" } }, "TOP 15"), difficulty && /* @__PURE__ */ React.createElement("span", { className: "mono", style: { fontSize: 9, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase", padding: "2px 6px", borderRadius: 2, color: "#fff", background: DIFF_COLOR[difficulty] } }, difficulty)), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, flexShrink: 0 } }, e.custom && /* @__PURE__ */ React.createElement("button", { className: "linkish", style: { color: "var(--accent)" }, onClick: () => deleteCustomExercise(m.key, e.name) }, "Delete"), /* @__PURE__ */ React.createElement("button", { className: "dayswitch", onClick: () => toggleExercise(e.name), "aria-pressed": on }, /* @__PURE__ */ React.createElement("span", { className: "switch-track" + (on ? " on" : "") }, /* @__PURE__ */ React.createElement("span", { className: "switch-knob" })))));
+      }), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 8, marginTop: 12 } }, /* @__PURE__ */ React.createElement(
+        "input",
+        {
+          value: customInput[m.key] || "",
+          onChange: (e) => setCustomInput((prev) => ({ ...prev, [m.key]: e.target.value })),
+          onKeyDown: (e) => {
+            if (e.key === "Enter") addCustomExercise(m.key, customInput[m.key] || "");
+          },
+          placeholder: `Add a ${m.label.toLowerCase()} exercise\u2026`,
+          style: { flex: 1 }
+        }
+      ), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => addCustomExercise(m.key, customInput[m.key] || "") }, "Add"))));
     }), /* @__PURE__ */ React.createElement("button", { className: "btn", style: { marginTop: 10 }, disabled: !splitValid || rebuilding, onClick: regenerate }, rebuilding ? "Regenerating\u2026" : "Regenerate plan"));
   }
   function GuideView({ setView }) {
@@ -1635,7 +1850,7 @@ body=${text.slice(0, 500)}`;
         },
         style: { flex: 1 }
       }
-    ), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, ["kg", "lb"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + (p.units === u ? " on" : ""), onClick: () => set("units", u) }, u))))), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: save2, style: { alignSelf: "flex-start" } }, saved ? "Saved \u2713" : "Save changes"), /* @__PURE__ */ React.createElement("div", { className: "card flush" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Your data"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: 0, marginBottom: 12 } }, "Export everything \u2014 profile, plan, logs, history \u2014 as a backup file, or restore from one."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: exportData }, "Export data"), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => {
+    ), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, ["kg", "lb", "st"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + (p.units === u ? " on" : ""), onClick: () => set("units", u) }, u))))), /* @__PURE__ */ React.createElement("div", { className: "card flush" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Age, height & sex"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12, marginBottom: 12 } }, "Used to estimate your resting calorie burn (BMR) for the daily calorie target."), /* @__PURE__ */ React.createElement("div", { className: "row", style: { marginBottom: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }, /* @__PURE__ */ React.createElement("input", { className: "mono", type: "number", min: "0", value: p.age || "", onChange: (e) => set("age", e.target.value), placeholder: "Age" })), /* @__PURE__ */ React.createElement("div", { className: "chipwrap" }, [["male", "Male"], ["female", "Female"], ["", "Prefer not to say"]].map(([v, label]) => /* @__PURE__ */ React.createElement("button", { key: v || "unset", className: "chip" + ((p.sex || "") === v ? " on" : ""), onClick: () => set("sex", v) }, label)))), /* @__PURE__ */ React.createElement("div", { className: "chipwrap", style: { marginBottom: 9 } }, ["cm", "ft"].map((u) => /* @__PURE__ */ React.createElement("button", { key: u, className: "chip" + ((p.heightUnit || "cm") === u ? " on" : ""), onClick: () => set("heightUnit", u) }, u === "cm" ? "cm" : "ft / in"))), (p.heightUnit || "cm") === "cm" ? /* @__PURE__ */ React.createElement("input", { className: "mono", type: "number", min: "0", value: p.heightCm || "", onChange: (e) => set("heightCm", e.target.value), placeholder: "Height in cm", style: { maxWidth: 200 } }) : /* @__PURE__ */ React.createElement("div", { className: "row", style: { maxWidth: 260 } }, /* @__PURE__ */ React.createElement("input", { className: "mono", type: "number", min: "0", value: p.heightFt || "", onChange: (e) => set("heightFt", e.target.value), placeholder: "Feet" }), /* @__PURE__ */ React.createElement("input", { className: "mono", type: "number", min: "0", value: p.heightIn || "", onChange: (e) => set("heightIn", e.target.value), placeholder: "Inches" }))), /* @__PURE__ */ React.createElement("button", { className: "btn", onClick: save2, style: { alignSelf: "flex-start" } }, saved ? "Saved \u2713" : "Save changes"), /* @__PURE__ */ React.createElement("div", { className: "card flush" }, /* @__PURE__ */ React.createElement("div", { className: "eyebrow", style: { marginBottom: 9 } }, "Your data"), /* @__PURE__ */ React.createElement("p", { className: "muted", style: { fontSize: 12.5, marginTop: 0, marginBottom: 12 } }, "Export everything \u2014 profile, plan, logs, history \u2014 as a backup file, or restore from one."), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } }, /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: exportData }, "Export data"), /* @__PURE__ */ React.createElement("button", { className: "btn ghost sm", onClick: () => {
       var _a;
       return (_a = fileRef.current) == null ? void 0 : _a.click();
     } }, "Import data"), /* @__PURE__ */ React.createElement("input", { ref: fileRef, type: "file", accept: "application/json", style: { display: "none" }, onChange: importData })), importMsg && /* @__PURE__ */ React.createElement("p", { className: "mono", style: { fontSize: 11.5, marginTop: 10, color: "var(--iron)" } }, importMsg)));
@@ -1811,7 +2026,8 @@ body=${text.slice(0, 500)}`;
           maxDifficultyFor(profile.level, profile.difficultyOverride),
           profile.top20Only !== false,
           profile.disabledExercises || [],
-          [current.name, ...otherNames]
+          [current.name, ...otherNames],
+          profile.customExercises || {}
         );
         if (!replacement) return;
         applyExerciseSwap(exIndex, replacement.name, replacement.equip);
@@ -1819,7 +2035,7 @@ body=${text.slice(0, 500)}`;
       }
       setSwappingExIdx(null);
     };
-    const completeWorkout = (durationMin) => {
+    const completeWorkout = (durationMin, calories) => {
       var _a2, _b2, _c;
       const today2 = (_b2 = (_a2 = plan == null ? void 0 : plan.weeks) == null ? void 0 : _a2[weekIdx]) == null ? void 0 : _b2[dayIdx];
       if (!today2 || today2.rest) return;
@@ -1829,7 +2045,7 @@ body=${text.slice(0, 500)}`;
         const sets = logs.sets && logs.sets[key] || [];
         return { name: ex.name, sets, targetSets: ex.sets, targetReps: ex.reps };
       });
-      const entry = { date: dateKey, dayName: DAYS[dayIdx], focus: today2.focus, durationMin: +durationMin || 0, exercises };
+      const entry = { date: dateKey, dayName: DAYS[dayIdx], focus: today2.focus, durationMin: +durationMin || 0, calories: calories || null, exercises };
       setLogs((L) => ({ ...L, history: { ...L.history || {}, [dateKey]: entry } }));
     };
     useEffect(() => {
