@@ -94,7 +94,7 @@
 .sp-hazard { background-image: repeating-linear-gradient(135deg, var(--accent) 0 9px, var(--rail-bg) 9px 18px); }
 .sp-topbar {
   display:flex; align-items:center; justify-content:space-between; gap:20px;
-  padding: 14px 24px 18px; background-color: var(--rail-bg); color:#fff;
+  padding: calc(14px + env(safe-area-inset-top)) 24px 18px; background-color: var(--rail-bg); color:#fff;
   background-position: 0 100%; background-size: 100% 4px; background-repeat:no-repeat;
   position: sticky; top:0; z-index:20; overflow-x:auto;
 }
@@ -111,7 +111,7 @@
   padding:8px 12px; border:1px solid rgba(255,255,255,.25); border-radius:6px; background:transparent;
   color:#fff; font-size:11px; font-weight:700; text-transform:uppercase; flex-shrink:0; white-space:nowrap;
 }
-.sp-navoverlay { position:fixed; inset:0; background: var(--rail-bg); z-index:30; padding:26px 20px; overflow:auto; }
+.sp-navoverlay { position:fixed; inset:0; background: var(--rail-bg); z-index:30; padding: calc(26px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); overflow:auto; }
 .sp-navoverlay button.item {
   display:flex; align-items:center; gap:16px; padding:18px 8px; border-bottom:1px solid rgba(255,255,255,.12);
   color:#fff; font-family:'Anton',sans-serif; font-size:26px; text-transform:uppercase; width:100%; text-align:left;
