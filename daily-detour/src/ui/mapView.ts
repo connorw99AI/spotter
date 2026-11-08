@@ -231,12 +231,13 @@ export class MapView {
       const tan = (t: number) => (g.c ? { x: 2 * (1 - t) * (g.c.x - g.p0.x) + 2 * t * (g.p1.x - g.c.x), y: 2 * (1 - t) * (g.c.y - g.p0.y) + 2 * t * (g.p1.y - g.c.y) } : { x: g.p1.x - g.p0.x, y: g.p1.y - g.p0.y });
       const len = g.c ? 1.1 * dist(g.p0, g.p1) : dist(g.p0, g.p1);
       if (e.oneWay) {
-        const n = Math.max(1, Math.round(len / 46) - 1);
+        // Curved one-way streets (roundabouts) get two arrows so the flow reads as a circle.
+        const n = g.c ? 2 : Math.max(1, Math.round(len / 46) - 1);
         for (let k = 1; k <= n; k++) {
           const t = k / (n + 1);
           const p = at(t), tg = tan(t);
           const ang = (Math.atan2(tg.y, tg.x) * 180) / Math.PI;
-          extras += `<path d="M-6-7 3 0-6 7" transform="translate(${f1(p.x)} ${f1(p.y)}) rotate(${f1(ang)})" fill="none" stroke="${C.forest}" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" opacity=".72"/>`;
+          extras += `<path d="M-5-6.5 3.5 0-5 6.5" transform="translate(${f1(p.x)} ${f1(p.y)}) rotate(${f1(ang)})" fill="none" stroke="${C.forest}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`;
         }
       }
       if (e.closed) {
@@ -397,7 +398,7 @@ export class MapView {
     const t = this.town;
     let s = '';
     const dp = nodePt(t, t.depot);
-    s += `<g class="mk mk-depot${focus.includes(t.depot) ? ' focus' : ''}" transform="translate(${f1(dp.x)} ${f1(dp.y)})"><circle r="23" class="mk-depot-disc"/><g transform="scale(1.05)">${homeIcon}</g></g>`;
+    s += `<g class="mk mk-depot${focus.includes(t.depot) ? ' focus' : ''}" transform="translate(${f1(dp.x)} ${f1(dp.y)})"><g class="mk-body"><circle r="23" class="mk-depot-disc"/><g transform="scale(1.05)">${homeIcon}</g></g></g>`;
     for (const shop of t.def.shops) {
       const p = nodePt(t, shop.node);
       const col = shopColour[shop.kind];
@@ -409,9 +410,9 @@ export class MapView {
       if (!done && waiting.length > 1) extra += `<g transform="translate(18 -18)"><circle r="10" class="mk-count"/><text y="4.5" class="mk-count-t">${waiting.length}</text></g>`;
       if (!done && fresh !== undefined) extra += `<g transform="translate(0 27)"><rect x="-17" y="-9" width="34" height="18" rx="9" class="mk-fresh"/><path d="M-9.5-4.5v9M-13.4-2.2l7.8 4.4M-13.4 2.2l7.8-4.4" class="mk-fresh-ico"/><text x="5" y="5" class="mk-fresh-t">${fresh}</text></g>`;
       if (done) extra += `<g transform="translate(17 -17)"><circle r="9" fill="${C.moss}" stroke="#FFFAF0" stroke-width="2"/><path d="M-4 0l3 3 5-6" fill="none" stroke="#FFFAF0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-      s += `<g class="mk mk-shop${done ? ' done' : ''}${focus.includes(shop.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})">
-        <circle r="23" fill="${col.fill}" stroke="#FFFAF0" stroke-width="4"/><circle r="16" fill="#FFFAF0"/>
-        <g transform="scale(.92)">${itemIcon[shop.kind]}</g>${extra}</g>`;
+      s += `<g class="mk mk-shop${done ? ' done' : ''}${focus.includes(shop.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
+        <g class="mk-face"><circle r="23" fill="${col.fill}" stroke="#FFFAF0" stroke-width="4"/><circle r="16" fill="#FFFAF0"/>
+        <g transform="scale(.92)">${itemIcon[shop.kind]}</g></g>${extra}</g></g>`;
     }
     for (const house of t.def.houses) {
       const p = nodePt(t, house.node);
@@ -423,9 +424,9 @@ export class MapView {
         bubbles += `<g transform="translate(${19 + j * 9} ${-17 - j * 3})"><circle r="11" fill="#FFFAF0" stroke="${shopColour[k].deep}" stroke-width="1.6"/><g transform="scale(.6)">${itemIcon[k]}</g></g>`;
       });
       if (delivered) bubbles = `<g transform="translate(18 -16)"><circle r="10" fill="${C.moss}" stroke="#FFFAF0" stroke-width="2"/><path d="M-4.5 0l3 3.2 5.6-6.4" fill="none" stroke="#FFFAF0" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-      s += `<g class="mk mk-house${delivered ? ' done' : ''}${focus.includes(house.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})">
+      s += `<g class="mk mk-house${delivered ? ' done' : ''}${focus.includes(house.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
         <path d="M-19-9 0-27 19-9Z" class="mk-roof"/>
-        <circle r="19" class="mk-house-disc"/><text y="7.5" class="mk-letter">${house.letter}</text>${bubbles}</g>`;
+        <circle r="19" class="mk-house-disc"/><text y="7.5" class="mk-letter">${house.letter}</text>${bubbles}</g></g>`;
     }
     this.gMarkers.innerHTML = s;
   }

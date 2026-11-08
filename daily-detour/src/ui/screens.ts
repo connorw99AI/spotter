@@ -5,6 +5,7 @@ import { shareResult, shareText } from '../game/share';
 import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles';
 import type { AppServices } from './appTypes';
 import { backIcon, basketIcon, bookIcon, coneIcon, courierSvg, cottageSvg, gearIcon, infoIcon, itemIcon, mechanicIcon, shopSvg, treeSvg, C } from './art';
+import { showCopyBox } from './copyBox';
 import { h, icon, setKids } from './dom';
 
 export interface Screen {
@@ -53,7 +54,7 @@ function heroArt(): string {
     <g transform="translate(312 44)">${cottageSvg('#C98A4B', '#F6E7CB', 1.05)}</g>
     <g transform="translate(300 140)">${treeSvg(1, 0)}</g>
     <g transform="translate(26 150)">${treeSvg(.9, 2)}</g>
-    <g transform="translate(206 112) scale(.95)" class="hero-courier">${courierSvg()}</g>
+    <g transform="translate(206 112) scale(.95)"><g class="hero-courier">${courierSvg()}</g></g>
   </svg>`;
 }
 
@@ -113,7 +114,9 @@ export class HomeScreen implements Screen {
         done
           ? h('button', { class: 'btn btn-quiet', type: 'button', onclick: async () => {
             const r = await shareResult(shareText({ puzzle: daily, moves: rec.moves, gold: daily.gold, medal: rec.medal, hints: rec.hints, daily: { number: n, dateKey: key } }));
-            shareStatus.textContent = r === 'copied' ? 'Result copied to the clipboard.' : r === 'shared' ? 'Shared.' : r === 'failed' ? 'Couldn’t share from this browser.' : '';
+            const text = shareText({ puzzle: daily, moves: rec.moves, gold: daily.gold, medal: rec.medal, hints: rec.hints, daily: { number: n, dateKey: key } });
+            if (r === 'failed') showCopyBox(shareStatus, text);
+            else shareStatus.textContent = r === 'copied' ? 'Result copied to the clipboard.' : r === 'shared' ? 'Shared.' : '';
           } }, 'Share result')
           : null,
         h('button', { class: `btn ${done ? 'btn-quiet' : 'btn-primary'}`, type: 'button', onclick: () => this.app.go({ screen: 'play', puzzleId: daily.id, mode: 'daily', dateKey: key }) },

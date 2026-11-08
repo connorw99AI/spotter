@@ -6,6 +6,7 @@ import type { Advice } from '../game/advisor';
 import { dailyNumber } from '../game/daily';
 import { RouteEditor, type EditResult } from '../game/editor';
 import { shareResult, shareText } from '../game/share';
+import { showCopyBox } from './copyBox';
 import type { AppServices } from './appTypes';
 import { backIcon, basketIcon, clearIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
 import { h, icon, setKids } from './dom';
@@ -61,7 +62,8 @@ export class PlayScreen {
   private chipFocus: NodeId[] = [];
   private chipTimer = 0;
   private selected: NodeId | null = null;
-  private completedThisVisit = false;
+  /** The route last delivered in this visit, so its button can offer a replay. */
+  private deliveredRoute: string | null = null;
   private timers = new Set<number>();
 
   // DOM
@@ -589,7 +591,7 @@ export class PlayScreen {
       this.app.store.recordDaily(this.opts.dateKey!, { puzzleId: p.id, rev: p.rev, moves, medal, hints: this.hints });
     }
     this.app.store.clearDraft(this.draftKey);
-    this.completedThisVisit = true;
+    this.deliveredRoute = this.routeKey();
     this.app.sound.play('complete');
     this.app.haptics([20, 60, 30]);
     this.showDocket(moves, medal, res.newBest, res.previousBest);
@@ -630,7 +632,8 @@ export class PlayScreen {
         h('button', { class: 'btn btn-quiet btn-share', type: 'button', onclick: async () => {
           const r = await shareResult(text);
           if (!this.alive) return;
-          status.textContent = r === 'shared' ? 'Shared.' : r === 'copied' ? 'Result copied to the clipboard.' : r === 'cancelled' ? '' : 'Couldn’t share from this browser.';
+          if (r === 'failed') showCopyBox(status, text);
+          else status.textContent = r === 'shared' ? 'Shared.' : r === 'copied' ? 'Result copied to the clipboard.' : '';
         } }, icon(shareIcon, 18), 'Share'),
         primary,
       ),
@@ -664,7 +667,7 @@ export class PlayScreen {
     this.map.hideCourier();
     this.map.clearTrail();
     this.renderAll();
-    this.say({ text: 'Delivered! Press Deliver to ride it again, or Try again for a fresh route.', tone: 'good' });
+    this.say({ text: 'Delivered! Press Ride again to watch it, or clear the route to try a shorter one.', tone: 'good' });
     this.map.svg.focus({ preventScroll: true });
   }
 
@@ -677,7 +680,7 @@ export class PlayScreen {
     this.hints = 0;
     this.hintLog = [];
     this.stage1Shown = false;
-    this.completedThisVisit = false;
+    this.deliveredRoute = null;
     this.say({ text: `Fresh start. Gold is ${this.t.gold} moves.`, tone: 'info' });
     this.afterChange();
     this.map.svg.focus({ preventScroll: true });
@@ -790,7 +793,7 @@ export class PlayScreen {
     const complete = isComplete(this.town, this.editor.state);
     this.rideBtn.disabled = riding || this.editor.moves === 0;
     this.rideBtn.className = `btn btn-ride${complete ? ' btn-primary ready' : ''}`;
-    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (this.completedThisVisit ? 'Ride again' : 'Deliver') : 'Preview');
+    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (this.deliveredRoute === this.routeKey() ? 'Ride again' : 'Deliver') : 'Preview');
     this.rideBtn.setAttribute('aria-label', complete ? 'Deliver: send the courier along your route' : 'Preview the route so far');
   }
 

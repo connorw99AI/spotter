@@ -1,40 +1,13 @@
 import type { PuzzleDef } from '../core/types';
 import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles';
-import { dailyPuzzleId, parseDateKey, utcDateKey } from '../game/daily';
+import { dailyPuzzleId } from '../game/daily';
 import { SaveStore } from '../game/storage';
 import { AdvisorClient } from './advisorClient';
 import type { AppServices, Route } from './appTypes';
+import { hashToRoute, routeToHash } from './routes';
 import { PlayScreen } from './play';
 import { BookScreen, HomeScreen, HowScreen, SettingsScreen, type Screen } from './screens';
 import { Sound, buzz } from './sound';
-
-function routeToHash(r: Route): string {
-  switch (r.screen) {
-    case 'home': return '#/';
-    case 'book': return '#/book';
-    case 'settings': return '#/settings';
-    case 'how': return '#/how';
-    case 'play': return r.mode === 'daily' ? `#/daily/${r.dateKey}` : `#/route/${r.puzzleId}`;
-  }
-}
-
-/** Parse a location hash. Daily links only open today's or yesterday's route (UTC). */
-export function hashToRoute(hash: string, now = new Date()): Route {
-  const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
-  if (parts[0] === 'book') return { screen: 'book' };
-  if (parts[0] === 'settings') return { screen: 'settings' };
-  if (parts[0] === 'how') return { screen: 'how' };
-  if (parts[0] === 'route' && parts[1] && PUZZLE_BY_ID.has(parts[1])) return { screen: 'play', puzzleId: parts[1], mode: 'practice' };
-  if (parts[0] === 'daily' && parts[1]) {
-    const t = parseDateKey(parts[1]);
-    const today = utcDateKey(now);
-    const yesterday = utcDateKey(new Date(now.getTime() - 86_400_000));
-    if (t !== null && (parts[1] === today || parts[1] === yesterday)) {
-      return { screen: 'play', puzzleId: '', mode: 'daily', dateKey: parts[1] };
-    }
-  }
-  return { screen: 'home' };
-}
 
 export class App implements AppServices {
   readonly store = new SaveStore();
@@ -70,8 +43,15 @@ export class App implements AppServices {
 
   go(route: Route) {
     const hash = routeToHash(route);
-    if (location.hash !== hash) location.hash = hash; // triggers show() via hashchange
-    else this.show(route);
+    if (location.hash !== hash) {
+      try {
+        location.hash = hash; // triggers show() via hashchange
+        if (location.hash === hash) return;
+      } catch {
+        /* some embedded frames refuse hash changes; navigate in-page instead */
+      }
+    }
+    this.show(route);
   }
 
   private show(route: Route) {
@@ -87,8 +67,7 @@ export class App implements AppServices {
         if (route.mode === 'daily') {
           // The daily puzzle is fixed by the date in the link, so a session that
           // crosses midnight keeps the same route.
-          const id = dailyPuzzleId(route.dateKey);
-          screen = new PlayScreen(this, { puzzle: PUZZLE_BY_ID.get(id)!, mode: 'daily', dateKey: route.dateKey });
+          screen = new PlayScreen(this, { puzzle: PUZZLE_BY_ID.get(dailyPuzzleId(route.dateKey))!, mode: 'daily', dateKey: route.dateKey });
         } else {
           screen = new PlayScreen(this, { puzzle: PUZZLE_BY_ID.get(route.puzzleId)!, mode: 'practice' });
         }
