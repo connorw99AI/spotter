@@ -1,13 +1,13 @@
 import type { GameState } from '../core/rules';
 import { edgeBetween, type Town } from '../core/town';
 import type { NodeId, ShopKind } from '../core/types';
+import { C, courierSvg, homeIcon, itemIcon, shopColour } from './art';
 import {
-  C, bushSvg, coneIcon, cottageSvg, courierSvg, depotSvg, flowersSvg, homeIcon, itemIcon, pineSvg, shopColour, shopSvg, treeSvg,
-} from './art';
-import {
-  U, add, clearance, dist, makeSeg, mul, nodePt, pathD, pointAlong, quadAt, seeded, segAt, segTangent, streetPolylines, streetSeg,
+  U, add, dist, makeSeg, mul, nodePt, pathD, pointAlong, quadAt, segAt, segTangent, streetSeg,
   type Pt, type Seg,
 } from './geometry';
+import { buildScene, waterShimmerSvg } from './scene';
+import type { Theme } from './theme';
 
 const NS = 'http://www.w3.org/2000/svg';
 const f1 = (n: number) => n.toFixed(1);
@@ -34,6 +34,8 @@ export interface Overlay {
  * nothing about the rules beyond what it is told to draw.
  */
 export class MapView {
+  /** Stacked layers: painted-once scenery, light ambient motion, then the interactive map. */
+  readonly root: HTMLDivElement;
   readonly svg: SVGSVGElement;
   readonly hitRadius: number;
   private readonly gRoute: SVGGElement;
@@ -43,11 +45,9 @@ export class MapView {
   private readonly gOver: SVGGElement;
   private readonly gFx: SVGGElement;
   private readonly courier: SVGGElement;
-  private readonly lines: [Pt, Pt][];
   private readonly box: { x: number; y: number; w: number; h: number };
 
-  constructor(readonly town: Town, label: string) {
-    this.lines = streetPolylines(town);
+  constructor(readonly town: Town, label: string, private readonly theme: Theme) {
     const pts = town.def.nodes.map((n) => ({ x: n.x, y: n.y }));
     for (const e of town.def.edges) if (e.bend) pts.push({ x: e.bend[0], y: e.bend[1] });
     let minX = Math.min(...pts.map((p) => p.x)), maxX = Math.max(...pts.map((p) => p.x));
@@ -66,15 +66,23 @@ export class MapView {
     }
     this.hitRadius = Math.min(0.46 * minD, 0.5) * U;
 
+    const viewBox = `${f1(this.box.x)} ${f1(this.box.y)} ${f1(this.box.w)} ${f1(this.box.h)}`;
+    const scene = el('svg', { viewBox, preserveAspectRatio: 'xMidYMid meet', class: 'map-scene', 'aria-hidden': 'true' });
+    scene.append(this.staticLayers());
+    const ambient = el('svg', { viewBox, preserveAspectRatio: 'xMidYMid meet', class: 'map-ambient', 'aria-hidden': 'true' });
+    ambient.append(this.cloudLayer());
+    ambient.insertAdjacentHTML('afterbegin', waterShimmerSvg(town, theme));
     this.svg = el('svg', {
-      viewBox: `${f1(this.box.x)} ${f1(this.box.y)} ${f1(this.box.w)} ${f1(this.box.h)}`,
+      viewBox,
       preserveAspectRatio: 'xMidYMid meet',
       class: 'map-svg',
       role: 'application',
       'aria-label': label,
       tabindex: 0,
     });
-    this.svg.append(this.staticLayers());
+    this.root = document.createElement('div');
+    this.root.className = 'map-stack';
+    this.root.append(scene, ambient, this.svg);
     this.gUnder = el('g', { class: 'layer-under' });
     this.gRoute = el('g', { class: 'layer-route' });
     this.gTrail = el('g', { class: 'layer-trail' });
@@ -89,198 +97,27 @@ export class MapView {
 
   private staticLayers(): SVGGElement {
     const g = el('g', { class: 'layer-static', 'aria-hidden': 'true' });
-    const big = { x: this.box.x - 600, y: this.box.y - 600, w: this.box.w + 1200, h: this.box.h + 1200 };
-    let s = `<defs>
-      <pattern id="lawn-dots" width="46" height="46" patternUnits="userSpaceOnUse">
-        <circle cx="8" cy="10" r="1.6" fill="${C.lawnDeep}"/><circle cx="31" cy="27" r="1.3" fill="${C.lawnDeep}"/><circle cx="20" cy="40" r="1.1" fill="#C2D49C"/>
-      </pattern>
-      <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-        <rect width="14" height="14" fill="#E7DDC8"/><rect width="6" height="14" fill="#D9CCB2"/>
-      </pattern>
-    </defs>
-    <rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="${C.lawn}"/>
-    <rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#lawn-dots)"/>`;
-    s += this.waterSvg();
-    s += this.scenerySvg(big);
-    s += this.streetsSvg();
-    s += this.buildingsSvg();
-    g.innerHTML = s;
+    g.innerHTML = buildScene(this.town, this.box, this.theme);
     return g;
   }
 
-  private waterSvg(): string {
-    let s = '';
-    for (const w of this.town.def.water ?? []) {
-      const pts = w.points.map(([x, y]) => ({ x: x * U, y: y * U }));
-      let d = `M${f1(pts[0].x)} ${f1(pts[0].y)}`;
-      for (let i = 1; i < pts.length; i++) {
-        const mid = i < pts.length - 1 ? { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 } : pts[i];
-        d += ` Q${f1(pts[i].x)} ${f1(pts[i].y)} ${f1(mid.x)} ${f1(mid.y)}`;
-      }
-      const wpx = w.width * U;
-      s += `<path d="${d}" fill="none" stroke="#B9D7C8" stroke-width="${wpx + 16}" stroke-linecap="round" stroke-linejoin="round"/>`;
-      s += `<path d="${d}" fill="none" stroke="${C.water}" stroke-width="${wpx}" stroke-linecap="round" stroke-linejoin="round"/>`;
-      s += `<path d="${d}" fill="none" stroke="#B7DCDD" stroke-width="3" stroke-dasharray="18 34" stroke-linecap="round" opacity=".9"/>`;
-    }
-    return s;
-  }
-
-  private nearWater(p: Pt, margin: number): boolean {
-    for (const w of this.town.def.water ?? []) {
-      for (let i = 1; i < w.points.length; i++) {
-        const a = { x: w.points[i - 1][0] * U, y: w.points[i - 1][1] * U };
-        const b = { x: w.points[i][0] * U, y: w.points[i][1] * U };
-        const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
-        const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2));
-        if (Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy) < (w.width * U) / 2 + margin) return true;
-      }
-    }
-    return false;
-  }
-
-  /** Building spots for locations, chosen beside the node where there is room. */
-  private buildingSpots = new Map<NodeId, Pt>();
-
-  private computeBuildingSpots() {
-    const taken: Pt[] = [];
-    const locs: NodeId[] = [this.town.depot, ...this.town.def.shops.map((s) => s.node), ...this.town.def.houses.map((h) => h.node)];
-    for (const id of locs) {
-      const p = nodePt(this.town, id);
-      let best: Pt | null = null;
-      let bestScore = -Infinity;
-      for (let a = 0; a < 24; a++) {
-        const ang = (a / 24) * Math.PI * 2;
-        for (const r of [46, 52, 60]) {
-          const q = { x: p.x + Math.cos(ang) * r, y: p.y + Math.sin(ang) * r };
-          const cl = clearance(q, this.lines);
-          if (cl < 30) continue;
-          if (taken.some((t) => dist(t, q) < 46)) continue;
-          if (this.town.def.nodes.some((n) => n.id !== id && dist(nodePt(this.town, n.id), q) < 48)) continue;
-          if (this.nearWater(q, 14)) continue;
-          // Prefer sitting above the node (reads as "behind" the stop) and close to it.
-          const score = cl * 0.4 - r * 0.6 - Math.sin(ang) * 10;
-          if (score > bestScore) { bestScore = score; best = q; }
-        }
-      }
-      if (best) { this.buildingSpots.set(id, best); taken.push(best); }
-    }
-  }
-
-  private scenerySvg(big: { x: number; y: number; w: number; h: number }): string {
-    this.computeBuildingSpots();
-    const rnd = seeded(this.town.def.id);
-    const density = this.town.def.scenery ?? 1;
-    const items: { p: Pt; svg: string }[] = [];
-    const placed: Pt[] = [...this.buildingSpots.values()];
-    const step = 40;
-    for (let y = big.y + 300; y < big.y + big.h - 300; y += step) {
-      for (let x = big.x + 300; x < big.x + big.w - 300; x += step) {
-        if (rnd() > 0.55 * density) continue;
-        const p = { x: x + (rnd() - 0.5) * 26, y: y + (rnd() - 0.5) * 26 };
-        const roll = rnd();
-        const kind = roll < 0.5 ? 'tree' : roll < 0.62 ? 'pine' : roll < 0.8 ? 'bush' : roll < 0.92 ? 'flowers' : 'cottage';
-        const need = kind === 'cottage' ? 40 : kind === 'flowers' ? 20 : kind === 'bush' ? 22 : 27;
-        if (clearance(p, this.lines) < need) continue;
-        if (this.town.def.nodes.some((n) => dist(nodePt(this.town, n.id), p) < need + 22)) continue;
-        if (this.nearWater(p, need * 0.6)) continue;
-        if (placed.some((q) => dist(p, q) < need + 12)) continue;
-        placed.push(p);
-        const sc = 0.85 + rnd() * 0.35;
-        const tone = Math.floor(rnd() * 3);
-        const svg = kind === 'tree' ? treeSvg(sc, tone) : kind === 'pine' ? pineSvg(sc) : kind === 'bush' ? bushSvg(sc) : kind === 'flowers' ? flowersSvg(sc, tone)
-          : cottageSvg(rnd() < 0.7 ? C.terracotta : '#C98A4B', '#F6E7CB', 0.9);
-        items.push({ p, svg });
-      }
-    }
-    for (const d of this.town.def.decor ?? []) {
-      const p = { x: d.x * U, y: d.y * U };
-      const svg = d.kind === 'tree' ? treeSvg(d.s ?? 1) : d.kind === 'pine' ? pineSvg(d.s ?? 1) : d.kind === 'bush' ? bushSvg(d.s ?? 1)
-        : d.kind === 'flowers' ? flowersSvg(d.s ?? 1) : d.kind === 'cottage' ? cottageSvg(C.terracotta, '#F6E7CB', d.s ?? 1) : '';
-      items.push({ p, svg });
-    }
-    items.sort((a, b) => a.p.y - b.p.y);
-    return `<g class="scenery">${items.map((i) => `<g transform="translate(${f1(i.p.x)} ${f1(i.p.y)})">${i.svg}</g>`).join('')}</g>`;
+  /** Slow cloud shadows drifting over the town (hidden when motion is reduced). */
+  private cloudLayer(): SVGGElement {
+    const g = el('g', { class: 'layer-clouds', 'aria-hidden': 'true' });
+    const b = this.box;
+    const r = Math.max(b.w, b.h);
+    let s = `<defs><radialGradient id="m-cloud"><stop offset="0" stop-color="#23352B" stop-opacity=".11"/><stop offset=".6" stop-color="#23352B" stop-opacity=".06"/><stop offset="1" stop-color="#23352B" stop-opacity="0"/></radialGradient></defs>`;
+    [[0.2, 0.25, 0], [0.7, 0.65, -22], [0.35, 0.9, -45]].forEach(([fx, fy, delay], i) => {
+      s += `<g class="cloud" style="animation-delay:${delay}s"><ellipse cx="${f1(b.x + b.w * fx)}" cy="${f1(b.y + b.h * fy)}" rx="${f1(r * 0.28)}" ry="${f1(r * 0.15)}" fill="url(#m-cloud)"/>${i === 1 ? `<ellipse cx="${f1(b.x + b.w * fx + r * 0.16)}" cy="${f1(b.y + b.h * fy - r * 0.06)}" rx="${f1(r * 0.17)}" ry="${f1(r * 0.11)}" fill="url(#m-cloud)"/>` : ''}</g>`;
+    });
+    g.innerHTML = s;
+    return g;
   }
 
   private edgeD(i: number): string {
     const e = this.town.edges[i];
     const g = streetSeg(this.town, i, e.a);
     return g.c ? `M${f1(g.p0.x)} ${f1(g.p0.y)}Q${f1(g.c.x)} ${f1(g.c.y)} ${f1(g.p1.x)} ${f1(g.p1.y)}` : `M${f1(g.p0.x)} ${f1(g.p0.y)}L${f1(g.p1.x)} ${f1(g.p1.y)}`;
-  }
-
-  private streetsSvg(): string {
-    const edges = this.town.edges;
-    const w = (i: number) => (edges[i].style === 'lane' ? [24, 17] : [36, 27]);
-    let kerb = '', surf = '', marks = '', extras = '';
-    edges.forEach((e, i) => {
-      const d = this.edgeD(i);
-      const [kw, sw] = w(i);
-      if (e.style === 'bridge') {
-        kerb += `<path d="${d}" stroke="#7A5A3A" stroke-width="${kw + 6}" stroke-linecap="butt"/>`;
-        surf += `<path d="${d}" stroke="#E2C79A" stroke-width="${sw + 2}" stroke-linecap="butt"/>`;
-        marks += `<path d="${d}" stroke="#C9A877" stroke-width="${sw}" stroke-dasharray="3 9" stroke-linecap="butt"/>`;
-      } else {
-        kerb += `<path d="${d}" stroke="${C.kerb}" stroke-width="${kw}"/>`;
-        surf += `<path d="${d}" stroke="${e.closed ? 'url(#hatch)' : C.road}" stroke-width="${sw}"/>`;
-        if (e.style !== 'lane' && !e.closed && !e.oneWay) {
-          marks += `<path d="${d}" stroke="#E4D6B6" stroke-width="2.4" stroke-dasharray="10 14" stroke-dashoffset="-6"/>`;
-        }
-      }
-      const g = streetSeg(this.town, i, e.a);
-      const at = (t: number) => (g.c ? quadAt(g.p0, g.c, g.p1, t) : { x: g.p0.x + (g.p1.x - g.p0.x) * t, y: g.p0.y + (g.p1.y - g.p0.y) * t });
-      const tan = (t: number) => (g.c ? { x: 2 * (1 - t) * (g.c.x - g.p0.x) + 2 * t * (g.p1.x - g.c.x), y: 2 * (1 - t) * (g.c.y - g.p0.y) + 2 * t * (g.p1.y - g.c.y) } : { x: g.p1.x - g.p0.x, y: g.p1.y - g.p0.y });
-      const len = g.c ? 1.1 * dist(g.p0, g.p1) : dist(g.p0, g.p1);
-      if (e.oneWay) {
-        // Curved one-way streets (roundabouts) get two arrows so the flow reads as a circle.
-        const n = g.c ? 2 : Math.max(1, Math.round(len / 46) - 1);
-        for (let k = 1; k <= n; k++) {
-          const t = k / (n + 1);
-          const p = at(t), tg = tan(t);
-          const ang = (Math.atan2(tg.y, tg.x) * 180) / Math.PI;
-          extras += `<path d="M-5-6.5 3.5 0-5 6.5" transform="translate(${f1(p.x)} ${f1(p.y)}) rotate(${f1(ang)})" fill="none" stroke="${C.forest}" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round" opacity=".8"/>`;
-        }
-      }
-      if (e.closed) {
-        const p = at(0.5), tg = tan(0.5);
-        const ang = (Math.atan2(tg.y, tg.x) * 180) / Math.PI;
-        extras += `<g transform="translate(${f1(p.x)} ${f1(p.y)}) rotate(${f1(ang)})">
-          <rect x="-4" y="-21" width="8" height="42" rx="3" fill="#FFFAF0" stroke="#8E4127" stroke-width="1.6"/>
-          <path d="M-4-14h8M-4-2h8M-4 10h8" stroke="#C8483A" stroke-width="5"/>
-        </g>
-        <g transform="translate(${f1(p.x + 0)} ${f1(p.y)}) translate(0 -2) scale(1.05)">${coneIcon}</g>`;
-      }
-    });
-    let plazas = '';
-    for (const n of this.town.def.nodes) {
-      const p = nodePt(this.town, n.id);
-      const inc = this.town.incident.get(n.id) ?? [];
-      const laneOnly = inc.every((i) => edges[i].style === 'lane');
-      const bridgeOnly = inc.every((i) => edges[i].style === 'bridge');
-      if (bridgeOnly) continue;
-      plazas += `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="${laneOnly ? 12 : 18}" fill="${C.kerb}"/>`;
-    }
-    let plazaTop = '';
-    for (const n of this.town.def.nodes) {
-      const p = nodePt(this.town, n.id);
-      const inc = this.town.incident.get(n.id) ?? [];
-      const laneOnly = inc.every((i) => edges[i].style === 'lane');
-      if (inc.every((i) => edges[i].style === 'bridge')) continue;
-      plazaTop += `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="${laneOnly ? 8.5 : 13.5}" fill="${C.road}"/>`;
-    }
-    return `<g class="streets" fill="none" stroke-linecap="round">${kerb}${plazas}${surf}${plazaTop}${marks}</g><g class="street-signs">${extras}</g>`;
-  }
-
-  private buildingsSvg(): string {
-    let s = '';
-    const items: { p: Pt; svg: string }[] = [];
-    for (const [id, p] of this.buildingSpots) {
-      const shop = this.town.shopKind.get(id);
-      const svg = id === this.town.depot ? depotSvg(0.95) : shop ? shopSvg(shop, 0.95) : cottageSvg(C.terracotta, '#F6E7CB', 0.9);
-      items.push({ p, svg });
-    }
-    items.sort((a, b) => a.p.y - b.p.y);
-    for (const i of items) s += `<g transform="translate(${f1(i.p.x)} ${f1(i.p.y - 4)})">${i.svg}</g>`;
-    return `<g class="buildings">${s}</g>`;
   }
 
   // ───────────────────────────── coordinates ─────────────────────────────
@@ -496,6 +333,25 @@ export class MapView {
     this.fx(`<g class="${cls}" transform="translate(${f1(p.x)} ${f1(p.y - 34)})"><g class="pop-in">
       <rect x="-30" y="-16" width="60" height="32" rx="16" class="pop-bg"/>
       <text x="-14" y="7" class="pop-sign">${sign}</text><g transform="translate(10 0) scale(.75)">${itemIcon[shop]}</g></g></g>`, 1100);
+    if (kind !== 'full') this.burst(p, kind, shop);
+  }
+
+  /** A small celebratory burst: sparkles for a pickup, hearts and a ring for a delivery. */
+  private burst(p: Pt, kind: 'pickup' | 'deliver', shop: ShopKind) {
+    const colour = shopColour[shop].fill;
+    let s = `<g class="burst" transform="translate(${f1(p.x)} ${f1(p.y)})">`;
+    s += `<circle r="20" class="burst-ring" stroke="${kind === 'deliver' ? C.moss : colour}"/>`;
+    const n = kind === 'deliver' ? 6 : 8;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 - Math.PI / 2 + (kind === 'deliver' ? 0.3 : 0);
+      const r = kind === 'deliver' ? 44 : 50;
+      const dx = Math.cos(a) * r, dy = Math.sin(a) * r - (kind === 'deliver' ? 18 : 0);
+      const shape = kind === 'deliver'
+        ? `<path d="M0 3.6C-6-1-4.6-6.4 0-3.4 4.6-6.4 6-1 0 3.6Z" fill="${i % 2 ? '#E77D9C' : '#D4688A'}"/>`
+        : `<path d="M0-6 1.6-1.6 6 0 1.6 1.6 0 6-1.6 1.6-6 0-1.6-1.6Z" fill="${i % 2 ? colour : '#E0B04A'}"/>`;
+      s += `<g class="spark" style="--dx:${f1(dx)}px;--dy:${f1(dy)}px;animation-delay:${(i % 3) * 30}ms">${shape}</g>`;
+    }
+    this.fx(s + '</g>', 900);
   }
 
   // ─────────────────────────────── courier ───────────────────────────────
@@ -518,6 +374,6 @@ export class MapView {
   destroy() {
     for (const t of this.fxTimers) clearTimeout(t);
     this.fxTimers.clear();
-    this.svg.remove();
+    this.root.remove();
   }
 }

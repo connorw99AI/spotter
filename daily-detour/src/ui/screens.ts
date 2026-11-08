@@ -4,7 +4,12 @@ import { DAILY_ROTATION, dailyNumber, dailyPuzzle, msUntilNextUtcDay, utcDateKey
 import { shareResult, shareText } from '../game/share';
 import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, bookIcon, coneIcon, courierSvg, cottageSvg, gearIcon, infoIcon, itemIcon, mechanicIcon, shopSvg, treeSvg, C } from './art';
+import { backIcon, basketIcon, bookIcon, coneIcon, courierSvg, gearIcon, infoIcon, itemIcon, mechanicIcon, C } from './art';
+import { buildTown } from '../core/town';
+import { seeded } from './geometry';
+import { miniMapSvg } from './scene';
+import { flowerBedArt, houseArt, lampArt, pineArt, randomHouseLook, shopArt, treeArt } from './sceneryArt';
+import { THEMES, themeFor } from './theme';
 import { showCopyBox } from './copyBox';
 import { h, icon, setKids } from './dom';
 
@@ -40,21 +45,40 @@ function topBar(title: string, back: () => void, backLabel: string): HTMLElement
   );
 }
 
-function heroArt(): string {
-  // A lane curling through a little village, with the courier mid-delivery.
-  return `<svg viewBox="0 0 360 170" class="hero-art" aria-hidden="true">
-    <rect width="360" height="170" rx="22" fill="${C.lawn}"/>
-    <path d="M-10 128C60 96 110 150 180 118S300 70 370 96" fill="none" stroke="${C.kerb}" stroke-width="30" stroke-linecap="round"/>
-    <path d="M-10 128C60 96 110 150 180 118S300 70 370 96" fill="none" stroke="${C.road}" stroke-width="22" stroke-linecap="round"/>
-    <path d="M-10 128C60 96 110 150 180 118S300 70 370 96" fill="none" stroke="${C.forest}" stroke-width="4" stroke-dasharray="2 11" stroke-linecap="round" opacity=".55"/>
-    <g transform="translate(46 70)">${cottageSvg(C.terracotta, '#F6E7CB', 1.25)}</g>
-    <g transform="translate(108 56)">${treeSvg(1.2, 1)}</g>
-    <g transform="translate(150 78)">${shopSvg('bakery', 1.15)}</g>
-    <g transform="translate(250 56)">${shopSvg('icecream', 1.1)}</g>
-    <g transform="translate(312 44)">${cottageSvg('#C98A4B', '#F6E7CB', 1.05)}</g>
-    <g transform="translate(300 140)">${treeSvg(1, 0)}</g>
-    <g transform="translate(26 150)">${treeSvg(.9, 2)}</g>
-    <g transform="translate(206 112) scale(.95)"><g class="hero-courier">${courierSvg()}</g></g>
+function heroArt(animate: boolean): string {
+  // A lane curling through a little village, with the courier mid-round.
+  const t = THEMES.spring;
+  const lane = 'M-60 132C40 100 100 152 180 122S300 76 420 100';
+  const rnd = seeded('hero');
+  const look = () => randomHouseLook(rnd, false);
+  const hedgeBlock = (x: number, y: number, w: number, hgt: number) => `
+    <rect x="${x}" y="${y}" width="${w}" height="${hgt}" rx="10" fill="${t.hedgeDeep}"/>
+    <rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${hgt - 8}" rx="7" fill="${t.hedge}" stroke="${t.hedge}" stroke-width="3" stroke-dasharray="0 9" stroke-linecap="round"/>
+    <rect x="${x + 9}" y="${y + 9}" width="${w - 18}" height="${hgt - 18}" rx="4" fill="${t.garden[0]}"/>
+    <rect x="${x + 9}" y="${y + 9}" width="${(w - 18) / 2}" height="${hgt - 18}" rx="4" fill="${t.garden[1]}"/>`;
+  return `<svg viewBox="0 0 360 180" class="hero-art${animate ? ' riding' : ''}" aria-hidden="true">
+    <defs><radialGradient id="hero-sun" cx=".18" cy=".05" r="1"><stop offset="0" stop-color="#FFFAE4" stop-opacity=".45"/><stop offset="1" stop-color="#FFFAE4" stop-opacity="0"/></radialGradient></defs>
+    <rect width="360" height="180" fill="${t.lawn}"/>
+    ${hedgeBlock(14, 18, 92, 76)}${hedgeBlock(238, 128, 110, 70)}
+    <path d="${lane}" fill="none" stroke="${C.kerb}" stroke-width="34" stroke-linecap="round"/>
+    <path d="${lane}" fill="none" stroke="${C.road}" stroke-width="26" stroke-linecap="round"/>
+    <path d="${lane}" fill="none" stroke="#FFFDF6" stroke-opacity=".6" stroke-width="9" transform="translate(-2 -2)"/>
+    <path d="${lane}" fill="none" stroke="#E4D6B6" stroke-width="2.4" stroke-dasharray="10 14"/>
+    <g transform="translate(58 70)">${houseArt(look(), 1.25)}</g>
+    <g transform="translate(150 84)">${shopArt('bakery', false, 1.05)}</g>
+    <g transform="translate(118 50)">${treeArt(t, 0, 1.15)}</g>
+    <g transform="translate(252 66)">${shopArt('florist', false, 1)}</g>
+    <g transform="translate(212 40)">${treeArt(t, 2, 1.05)}</g>
+    <g transform="translate(318 56)">${pineArt(t, 1.1)}</g>
+    <g transform="translate(296 172)">${houseArt(look(), 1.05)}</g>
+    <g transform="translate(24 172)">${treeArt(t, 1, 1)}</g>
+    <g transform="translate(120 172)">${flowerBedArt(t, 1, 1.2)}</g>
+    <g transform="translate(196 104)">${lampArt(false)}</g>
+    <rect width="360" height="180" fill="url(#hero-sun)"/>
+    <g class="courier"${animate ? '' : ' transform="translate(176 112) scale(.92)"'}>
+      <g transform="translate(0 -12) scale(.92)">${courierSvg()}</g>
+      ${animate ? `<animateMotion dur="11s" repeatCount="indefinite" path="${lane}" rotate="0"/>` : ''}
+    </g>
   </svg>`;
 }
 
@@ -156,7 +180,7 @@ export class HomeScreen implements Screen {
         h('button', { class: 'btn-link', type: 'button', onclick: () => this.app.go({ screen: 'settings' }) }, icon(gearIcon, 18), 'Settings')),
       store.persistent ? null : h('p', { class: 'storage-warn' }, 'This browser isn’t letting the game save, so progress lasts until you close the tab.'),
     );
-    (this.root.querySelector('.hero-frame') as HTMLElement).innerHTML = heroArt();
+    (this.root.querySelector('.hero-frame') as HTMLElement).innerHTML = heroArt(!this.app.reducedMotion());
   }
 
   destroy() {
@@ -198,15 +222,17 @@ export class BookScreen implements Screen {
       ? h('span', { class: 'ticket-result' }, stampMini(rec.bestMedal), h('span', {}, `Best ${rec.bestMoves} · gold ${p.gold}`), rec.bestCleanMoves !== undefined ? h('span', { class: 'clean', title: 'Delivered without hints' }, 'no hints') : null)
       : h('span', { class: 'ticket-result muted' }, isNext ? 'Up next' : `Gold ${p.gold}`);
     const label = `Route ${p.number}: ${p.title}. ${rec ? `${medalName[rec.bestMedal]}, best ${rec.bestMoves} moves.` : 'Not delivered yet.'} ${mech.map((m) => mechanicIcon[m].label).join(', ')}`;
-    return h('button', { class: `ticket${rec ? ' done' : ''}${isNext ? ' next' : ''}`, type: 'button', 'aria-label': label, onclick: () => this.app.go({ screen: 'play', puzzleId: p.id, mode: 'practice' }) },
-      h('span', { class: 'ticket-no', 'aria-hidden': 'true' }, String(p.number)),
+    const btn = h('button', { class: `ticket${rec ? ' done' : ''}${isNext ? ' next' : ''}`, type: 'button', 'aria-label': label, onclick: () => this.app.go({ screen: 'play', puzzleId: p.id, mode: 'practice' }) },
+      h('span', { class: 'ticket-thumb', 'aria-hidden': 'true' }),
       h('span', { class: 'ticket-main' },
-        h('span', { class: 'ticket-title' }, p.title),
+        h('span', { class: 'ticket-title' }, h('span', { class: 'ticket-no', 'aria-hidden': 'true' }, String(p.number)), p.title),
         h('span', { class: 'ticket-brief' }, p.brief)),
       h('span', { class: 'ticket-side' },
         h('span', { class: 'ticket-mech', 'aria-hidden': 'true' }, ...mech.map((m) => h('span', { title: mechanicIcon[m].label }, icon(mechanicIcon[m].svg, 16)))),
         result),
     );
+    btn.querySelector('.ticket-thumb')!.insertAdjacentHTML('afterbegin', miniMapSvg(buildTown(p), themeFor(p)));
+    return btn;
   }
 
   destroy() { this.root.remove(); }

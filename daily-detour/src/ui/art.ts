@@ -81,91 +81,42 @@ export const mechanicIcon: Record<string, { svg: string; label: string }> = {
   capacity: { svg: basketIcon, label: 'Basket holds two' },
 };
 
-/** The courier: a little cargo bike with a basket, side view, facing right. ~64×48 units centred on the wheels' midpoint. */
+/**
+ * The courier: a cargo bike with a front crate, side view facing right, wheels on
+ * y = 8. Inner groups carry classes so CSS can spin the wheels and bob the rider
+ * without touching the transforms the map sets on the outer group.
+ */
 export function courierSvg(): string {
+  const wheel = (x: number) => `<g transform="translate(${x} 8)">
+      <circle r="9.6" fill="#FFFAF0" fill-opacity=".35" stroke="#23352B" stroke-width="3.2"/>
+      <g class="spokes"><path d="M-8 0H8M0-8V8M-5.6-5.6l11.2 11.2M-5.6 5.6 5.6-5.6" stroke="#23352B" stroke-width="1" opacity=".55"/></g>
+      <circle r="2.2" fill="#23352B"/>
+    </g>`;
   return `<g class="courier-body">
-    <ellipse cx="0" cy="17" rx="28" ry="5" fill="#23352B" opacity=".18"/>
-    <circle cx="-17" cy="8" r="9.5" fill="none" stroke="#23352B" stroke-width="3.2"/>
-    <circle cx="17" cy="8" r="9.5" fill="none" stroke="#23352B" stroke-width="3.2"/>
-    <circle cx="-17" cy="8" r="2" fill="#23352B"/><circle cx="17" cy="8" r="2" fill="#23352B"/>
-    <path d="M-17 8-4 8 6-6M-4 8-9-7M17 8 9-9" fill="none" stroke="#2F5D46" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M-13-8h9" stroke="#23352B" stroke-width="3.4" stroke-linecap="round"/>
-    <path d="M6-10h7" stroke="#23352B" stroke-width="3" stroke-linecap="round"/>
-    <rect x="13" y="-13" width="16" height="11" rx="2.5" fill="#B85C38" stroke="#8E4127" stroke-width="1.8"/>
-    <path d="M15-8.5h12" stroke="#E0B04A" stroke-width="1.8"/>
-    <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="#E0B04A" stroke-width="7" stroke-linecap="round"/>
-    <path d="M1-19 8-11" stroke="#F1D7B8" stroke-width="3.4" stroke-linecap="round"/>
-    <circle cx="5" cy="-29" r="6.4" fill="#F1D7B8"/>
-    <path d="M-1.6-30.5C-1.6-37.6 11.2-37.6 11.2-30.5Z" fill="#2F5D46"/>
-    <path d="M9.5-31.2h5" stroke="#2F5D46" stroke-width="2.4" stroke-linecap="round"/>
+    <ellipse cx="2" cy="18" rx="30" ry="5" fill="#23352B" opacity=".2"/>
+    <g class="speed"><path d="M-40-6h12M-44 2h14M-38 10h9" stroke="#FFFAF0" stroke-width="2.6" stroke-linecap="round" opacity=".9"/></g>
+    ${wheel(-18)}${wheel(18)}
+    <path d="M-18 8-4 8 7-6M-4 8-9-7M18 8 10-10" fill="none" stroke="#2F5D46" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-4 8l2 3" stroke="#23352B" stroke-width="2" stroke-linecap="round"/>
+    <path d="M-14-8h9" stroke="#23352B" stroke-width="3.4" stroke-linecap="round"/>
+    <g transform="translate(21 -9)">
+      <rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#B85C38" stroke="#8E4127" stroke-width="1.8"/>
+      <path d="M-8-1.5h17" stroke="#E0B04A" stroke-width="1.8"/>
+      <path d="M-5-6c0-4 4-5 6-2" fill="#E7A95A" stroke="#8A5524" stroke-width="1"/>
+      <circle cx="5" cy="-7.4" r="2.4" fill="#E77D9C" stroke="#9B3E5C" stroke-width=".8"/>
+    </g>
+    <path d="M7-11h7" stroke="#23352B" stroke-width="3" stroke-linecap="round"/>
+    <g class="rider">
+      <path class="scarf" d="M1-21C-5-21-9-19-12-16" fill="none" stroke="#B85C38" stroke-width="3" stroke-linecap="round"/>
+      <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="#E0B04A" stroke-width="7.4" stroke-linecap="round"/>
+      <path d="M-8-6 0 1" stroke="#2F5D46" stroke-width="5" stroke-linecap="round"/>
+      <path d="M1-19 9-12" stroke="#F1D7B8" stroke-width="3.4" stroke-linecap="round"/>
+      <circle cx="5" cy="-29" r="6.6" fill="#F1D7B8"/>
+      <circle cx="8.4" cy="-29.4" r=".9" fill="#23352B"/>
+      <path d="M7.2-26c1 .8 2.2.8 3 0" fill="none" stroke="#8E4127" stroke-width=".9" stroke-linecap="round"/>
+      <path d="M-1.8-30.4C-1.8-38 11.6-38 11.6-30.4Z" fill="#2F5D46"/>
+      <path d="M9.8-31.2h5.4" stroke="#2F5D46" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M1-35.6c2-1.2 5-1.4 7-.4" fill="none" stroke="#FFFAF0" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
+    </g>
   </g>`;
-}
-
-/** Small cottage for scenery or a house location. */
-export function cottageSvg(roof = C.terracotta, wall = '#F6E7CB', s = 1): string {
-  return `<g transform="scale(${s})">
-    <ellipse cx="2" cy="15" rx="19" ry="4" fill="#23352B" opacity=".12"/>
-    <rect x="-14" y="-3" width="28" height="18" rx="2" fill="${wall}" stroke="#8C6A45" stroke-width="1.4"/>
-    <path d="M-18-2 0-17 18-2Z" fill="${roof}" stroke="${C.terracottaDeep}" stroke-width="1.6" stroke-linejoin="round"/>
-    <rect x="-9" y="3" width="6" height="6" rx="1" fill="#9BC8CC" stroke="#8C6A45" stroke-width="1"/>
-    <rect x="3" y="4" width="6" height="11" rx="1.5" fill="${C.forest}"/>
-  </g>`;
-}
-
-/** Shopfront with a striped awning in the shop's colour. */
-export function shopSvg(kind: ShopKind, s = 1): string {
-  const col = shopColour[kind];
-  const stripes = [-14, -7, 0, 7].map((x) => `<path d="M${x}-4h7v5c0 2-7 2-7 0Z" fill="${(x / 7) % 2 === 0 ? col.fill : '#FFFAF0'}" stroke="${col.deep}" stroke-width="1"/>`).join('');
-  return `<g transform="scale(${s})">
-    <ellipse cx="2" cy="15" rx="20" ry="4" fill="#23352B" opacity=".12"/>
-    <rect x="-15" y="-12" width="30" height="27" rx="2.5" fill="#F7EBD3" stroke="#8C6A45" stroke-width="1.4"/>
-    <rect x="-15" y="-15" width="30" height="5" rx="1.5" fill="${col.deep}"/>
-    ${stripes}
-    <rect x="-11" y="5" width="9" height="7" rx="1" fill="#9BC8CC" stroke="#8C6A45" stroke-width="1"/>
-    <rect x="3" y="4" width="7" height="11" rx="1.5" fill="${col.deep}"/>
-  </g>`;
-}
-
-export function depotSvg(s = 1): string {
-  return `<g transform="scale(${s})">
-    <ellipse cx="2" cy="16" rx="22" ry="4" fill="#23352B" opacity=".14"/>
-    <rect x="-16" y="-3" width="32" height="19" rx="2" fill="#F6E7CB" stroke="#8C6A45" stroke-width="1.4"/>
-    <path d="M-20-2 0-19 20-2Z" fill="${C.forest}" stroke="${C.forestDeep}" stroke-width="1.6" stroke-linejoin="round"/>
-    <rect x="-11" y="3" width="8" height="13" rx="1.5" fill="${C.mustard}" stroke="#8C6A45" stroke-width="1"/>
-    <rect x="2" y="3" width="9" height="6" rx="1" fill="#9BC8CC" stroke="#8C6A45" stroke-width="1"/>
-    <path d="M20-2v-14" stroke="#8C6A45" stroke-width="1.6"/><path d="M20-16l9 3-9 3Z" fill="${C.mustard}"/>
-  </g>`;
-}
-
-export function treeSvg(s = 1, tone = 0): string {
-  const leaf = ['#7FA567', '#6C9659', '#8DB373'][tone % 3];
-  const dark = ['#5E8650', '#557C47', '#6A955A'][tone % 3];
-  return `<g transform="scale(${s})">
-    <ellipse cx="3" cy="11" rx="12" ry="4" fill="#23352B" opacity=".13"/>
-    <path d="M0 4v8" stroke="#8C6A45" stroke-width="3" stroke-linecap="round"/>
-    <circle cy="-3" r="11" fill="${dark}"/>
-    <circle cx="-2" cy="-5" r="9" fill="${leaf}"/>
-    <circle cx="-5" cy="-8" r="2.4" fill="#A9C98E" opacity=".8"/>
-  </g>`;
-}
-
-export function pineSvg(s = 1): string {
-  return `<g transform="scale(${s})">
-    <ellipse cx="3" cy="12" rx="10" ry="3.5" fill="#23352B" opacity=".13"/>
-    <path d="M0 6v6" stroke="#8C6A45" stroke-width="3" stroke-linecap="round"/>
-    <path d="M0-16 10 6H-10Z" fill="#4F7B4A"/><path d="M0-16 4 2H-7Z" fill="#6A955A"/>
-  </g>`;
-}
-
-export function bushSvg(s = 1): string {
-  return `<g transform="scale(${s})">
-    <ellipse cx="2" cy="6" rx="11" ry="3" fill="#23352B" opacity=".12"/>
-    <circle cx="-5" cy="0" r="6" fill="#86AD6C"/><circle cx="4" cy="-1" r="7" fill="#7AA162"/><circle cx="0" cy="2" r="5" fill="#93B97A"/>
-  </g>`;
-}
-
-export function flowersSvg(s = 1, tone = 0): string {
-  const cols = [['#E77D9C', '#F2C14E', '#FFFAF0'], ['#F2C14E', '#E98A3A', '#FFFAF0'], ['#B9A3E3', '#E77D9C', '#FFFAF0']][tone % 3];
-  const dots = [[-6, 1], [-1, -3], [4, 1], [1, 4], [7, -2], [-4, -5]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2" fill="${cols[i % 3]}"/>`).join('');
-  return `<g transform="scale(${s})"><ellipse cx="0" cy="1" rx="10" ry="6" fill="#9DBE7E"/>${dots}</g>`;
 }

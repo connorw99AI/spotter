@@ -12,6 +12,7 @@ import { backIcon, basketIcon, clearIcon, hintIcon, itemIcon, playIcon, redoIcon
 import { h, icon, setKids } from './dom';
 import { MapView } from './mapView';
 import { Ride } from './ride';
+import { themeFor, type Theme } from './theme';
 import { describeBlock, describeDoom, describeEvents, describeNodeForStep, describeObjective, houseOf, itemName, orderKind, shopName } from './text';
 
 type Tone = 'info' | 'good' | 'warn' | 'tip';
@@ -47,6 +48,7 @@ export class PlayScreen {
   private readonly town: Town;
   private readonly editor: RouteEditor;
   private readonly map: MapView;
+  private readonly theme: Theme;
   private readonly t: { gold: number; silver: number };
   private readonly draftKey: string;
   private hints = 0;
@@ -89,7 +91,8 @@ export class PlayScreen {
     const draft = app.store.draft(this.draftKey, p.id, p.rev);
     this.editor = new RouteEditor(this.town, draft?.route);
     this.hints = draft?.hints ?? 0;
-    this.map = new MapView(this.town, `Map of ${p.title}. Draw a route from your cottage.`);
+    this.theme = themeFor(p);
+    this.map = new MapView(this.town, `Map of ${p.title}. Draw a route from your cottage.`, this.theme);
     const startTip = this.tip('start');
     this.message = this.editor.moves > 0
       ? { text: 'Welcome back — your route is just as you left it.', tone: 'info' }
@@ -116,7 +119,7 @@ export class PlayScreen {
     this.srEl = h('div', { class: 'sr-only', 'aria-live': 'polite' });
     const help = h('p', { class: 'sr-only', id: 'map-help' }, 'Arrow keys ride to the next corner in that direction. Space picks between nearby corners and Enter rides there. Backspace undoes.');
     this.map.svg.setAttribute('aria-describedby', 'map-help');
-    this.mapWrap = h('div', { class: 'map-wrap' }, this.map.svg, help);
+    this.mapWrap = h('div', { class: 'map-wrap' }, this.map.root, help);
     this.ordersEl = h('ul', { class: 'orders', 'aria-label': 'Orders' });
     this.statsEl = h('div', { class: 'stats' });
     this.undoBtn = h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Undo', title: 'Undo', onclick: () => this.doUndo() }, icon(undoIcon, 22));
