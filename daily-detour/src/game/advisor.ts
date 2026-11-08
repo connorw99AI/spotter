@@ -10,6 +10,7 @@ export type Objective =
 
 export type DoomReason =
   | { type: 'spoil'; order: number }
+  | { type: 'fragile'; order: number }
   | { type: 'stuck' }
   | { type: 'other' };
 
@@ -29,12 +30,20 @@ export interface Advice {
   goldUndoTo?: number;
 }
 
-function legalDistances(town: Town, src: NodeId): Map<NodeId, number> {
+function legalDistances(town: Town, src: NodeId, smoothOnly = false): Map<NodeId, number> {
   const d = new Map<NodeId, number>([[src, 0]]);
   let q = [src];
   while (q.length) {
     const nq: NodeId[] = [];
-    for (const u of q) for (const v of town.succ.get(u) ?? []) if (!d.has(v)) { d.set(v, d.get(u)! + 1); nq.push(v); }
+    for (const u of q) for (const v of town.succ.get(u) ?? []) {
+      if (d.has(v)) continue;
+      if (smoothOnly) {
+        const e = town.edges.find((x) => (x.a === u && x.b === v) || (x.a === v && x.b === u));
+        if (e?.cobbles) continue;
+      }
+      d.set(v, d.get(u)! + 1);
+      nq.push(v);
+    }
     q = nq;
   }
   return d;
@@ -61,6 +70,10 @@ function diagnose(town: Town, s: GameState): DoomReason {
     if (left === null) continue;
     const dist = d.get(town.orders[i].to);
     if (dist === undefined || dist > left) return { type: 'spoil', order: i };
+  }
+  const smooth = legalDistances(town, s.node, true);
+  for (let i = 0; i < s.orders.length; i++) {
+    if (s.orders[i].status === 1 && town.orders[i].fragile && !smooth.has(town.orders[i].to)) return { type: 'fragile', order: i };
   }
   if (!d.has(town.depot)) return { type: 'stuck' };
   if (carriedCount(s) > 0) {

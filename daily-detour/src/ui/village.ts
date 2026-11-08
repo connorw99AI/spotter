@@ -5,7 +5,9 @@ import { C, flameIcon, heartIcon } from './art';
 import { h, icon, setKids } from './dom';
 import { seeded } from './geometry';
 import { benchArt, flowerBedArt, fountainArt, houseArt, lampArt, randomHouseLook, shedArt, shopArt, treeArt } from './sceneryArt';
-import { heartCount, stampMini, topBar, type Screen } from './screens';
+import { chapterProgressAll, heartCount, letterCard, stampMini, topBar, type Screen } from './screens';
+import { STORY, chapterKeepsakes } from '../game/story';
+import { portraitSvg } from './portraits';
 import { themeForMonth, type Theme } from './theme';
 
 const at = (x: number, y: number, svg: string, cls = '') => `<g transform="translate(${x} ${y})"${cls ? ` class="${cls}"` : ''}>${svg}</g>`;
@@ -66,6 +68,17 @@ export function villageSvg(t: Theme, restored: ReadonlySet<string>, kept: Readon
   if (kept.has('harvest')) s += at(196, 262, [0, 1, 2].map((i) => `<ellipse cx="${i * 12}" cy="0" rx="6" ry="5" fill="#E8833A" stroke="#9C4C17"/><path d="M${i * 12} -5v-3" stroke="#5C9A4A" stroke-width="1.6"/>`).join(''));
   if (kept.has('winter')) s += at(124, 168, `<path d="M0-26 12 6H-12Z" fill="#3D5E46"/><path d="M0-26 5 6H-12Z" fill="#54775A"/>${[[-6, -2], [4, -10], [6, 2], [-2, -16]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="1.8" fill="${['#FFD98A', '#E77D9C', '#FFFFFF', '#FFD98A'][i]}"/>`).join('')}<path d="M0-30l2 3h-4z" fill="#E0B04A"/>`);
   if (kept.has('fete')) s += at(306, 196, `<path d="M-14 8V-4L0-14 14-4V8Z" fill="#FFFAF0" stroke="#9B3E5C"/>${[-10, -2, 6].map((x) => `<path d="M${x} -6v14" stroke="#D4688A" stroke-width="4"/>`).join('')}`);
+  // Keepsakes from finished chapters.
+  if (kept.has('bicycle')) s += at(186, 150, `<ellipse cx="2" cy="9" rx="16" ry="3" fill="#23352B" opacity=".15"/><circle cx="-9" cy="4" r="5.5" fill="none" stroke="#23352B" stroke-width="1.8"/><circle cx="9" cy="4" r="5.5" fill="none" stroke="#23352B" stroke-width="1.8"/><path d="M-9 4-2 4 4-4M-2 4-5-4M9 4 5-6" stroke="#B85C38" stroke-width="2" fill="none" stroke-linecap="round"/><rect x="5" y="-10" width="9" height="6" rx="1.5" fill="#E0B04A" stroke="#A67C1E"/>`);
+  if (kept.has('breadcart')) s += at(262, 122, `<ellipse cx="2" cy="10" rx="16" ry="3" fill="#23352B" opacity=".15"/><rect x="-13" y="-6" width="24" height="12" rx="2" fill="#D9973F" stroke="#9A6420"/><path d="M-13-6 0-13 11-6" fill="#FFFAF0" stroke="#9A6420"/><circle cx="-7" cy="8" r="3" fill="#6E5236"/><circle cx="6" cy="8" r="3" fill="#6E5236"/><ellipse cx="-4" cy="-6" rx="3" ry="1.8" fill="#E7A95A"/><ellipse cx="3" cy="-7" rx="3" ry="1.8" fill="#E7A95A"/>`);
+  if (kept.has('gates')) s += at(232, 210, `<path d="M-7-8v16M7-8v16" stroke="#3E6E9A" stroke-width="2.6" stroke-linecap="round"/><path d="M-7-4H7M-7 3H7M-3-4V3M2-4V3" stroke="#5B8BC9" stroke-width="2"/>`);
+  if (kept.has('arch')) s += at(96, 178, `<path d="M-12 10V-2A12 12 0 0 1 12-2V10" fill="none" stroke="#8C6A45" stroke-width="2.4"/>${[-10, -6, 0, 6, 10].map((x, i) => `<circle cx="${x}" cy="${i === 2 ? -13 : i % 4 === 0 ? -1 : -9}" r="2.6" fill="${['#F7CFDC', '#FFFFFF', '#E77D9C', '#FFFFFF', '#F7CFDC'][i]}"/>`).join('')}`);
+  if (kept.has('ferry')) s += at(336, 116, `<path d="M-14 0H14L10 7H-10Z" fill="#B85C38" stroke="#8E4127"/><rect x="-6" y="-7" width="12" height="7" rx="1.5" fill="#FFFAF0" stroke="#7A5C3E"/><path d="M-16 9c4 2 8 2 12 0s8-2 12 0 8 2 12 0" fill="none" stroke="#FFFFFF" stroke-width="1.2" opacity=".8"/>`);
+  if (kept.has('streamers')) {
+    let f = '';
+    for (let i = 0; i < 9; i++) f += `<path d="M${236 + i * 11} ${222 + Math.sin((i / 8) * Math.PI) * 6}h7l-3.5 6z" fill="${['#E0B04A', '#4FA593', '#D4688A'][i % 3]}"/>`;
+    s += `<path d="M232 220Q284 234 336 218" fill="none" stroke="#7A5C3E" stroke-width="1"/>${f}`;
+  }
   // Bunting and the fete.
   if (on('bunting')) {
     let flags = '';
@@ -97,32 +110,32 @@ export class VillageScreen implements Screen {
     const store = this.app.store;
     const hearts = heartCount(this.app);
     const restored = new Set(store.data.restored);
-    const kept = new Set(keepsakes(Object.keys(store.data.daily)));
+    const kept = new Set([...keepsakes(Object.keys(store.data.daily)), ...chapterKeepsakes(chapterProgressAll(this.app))]);
     const theme = themeForMonth(new Date().getUTCMonth() + 1);
     const items = PROJECTS.map((p) => {
       const st = projectState(p, hearts, store.data.restored);
       return h('li', { class: `project project-${st}` },
         h('span', { class: 'project-cost', 'aria-label': `${p.cost} hearts` }, icon(heartIcon, 14), String(p.cost)),
+        h('span', { class: 'project-face', 'aria-hidden': 'true', 'data-who': p.resident }),
         h('span', { class: 'project-main' }, h('span', { class: 'project-title' }, p.title), h('span', { class: 'project-who' }, st === 'restored' ? `Done for ${p.resident}` : `Asked by ${p.resident}`)),
         st === 'ready' ? h('button', { class: 'btn btn-small btn-primary', type: 'button', onclick: () => this.restore(p) }, 'Restore')
           : st === 'restored' ? h('span', { class: 'project-done' }, '✓')
           : h('span', { class: 'project-lock' }, `${p.cost - hearts} to go`),
       );
     });
-    const kept2 = EVENTS.filter((e) => kept.has(e.id));
+    const kept2 = [...EVENTS.filter((e) => kept.has(e.id)).map((e) => e.keepsake), ...Object.values(STORY).filter((st) => kept.has(st.keepsake.id)).map((st) => st.keepsake.label)];
     setKids(this.root,
       topBar('Your village', () => this.app.go({ screen: 'home' }), 'Back to town'),
       h('div', { class: 'village-body' },
         h('div', { class: 'village-frame' }),
         h('div', { class: 'village-hearts' }, icon(heartIcon, 20), h('b', {}, String(hearts)), ' hearts from deliveries. Bronze gives 1, silver 2 and gold 3, counted at your best on each route, plus every daily.'),
-        this.note ? h('aside', { class: 'resident-note', 'aria-live': 'polite' },
-          h('p', { class: 'note-who' }, this.note.project.resident),
-          h('p', {}, `“${this.note.project.note}”`)) : null,
+        this.note ? letterCard({ at: 0, from: this.note.project.resident, text: this.note.project.note }, true) : null,
         h('ol', { class: 'projects' }, ...items),
-        kept2.length ? h('p', { class: 'muted' }, `Keepsakes: ${kept2.map((e) => e.keepsake).join(', ')}.`) : h('p', { class: 'muted' }, 'Seasonal events add keepsakes here: deliver three event dailies during Blossom Week, the Summer Fete, the Harvest Fair or Winter Lights.'),
+        kept2.length ? h('p', { class: 'muted' }, `Keepsakes: ${kept2.join(', ')}.`) : h('p', { class: 'muted' }, 'Seasonal events add keepsakes here: deliver three event dailies during Blossom Week, the Summer Fete, the Harvest Fair or Winter Lights.'),
       ),
     );
     (this.root.querySelector('.village-frame') as HTMLElement).innerHTML = villageSvg(theme, restored, kept, this.fresh, !this.app.reducedMotion());
+    this.root.querySelectorAll<HTMLElement>('.project-face').forEach((el) => { el.innerHTML = portraitSvg(el.dataset.who!, 34); });
   }
 
   private restore(p: Project) {
@@ -132,7 +145,7 @@ export class VillageScreen implements Screen {
     this.app.sound.play('complete');
     this.app.haptics([20, 50, 20]);
     this.render();
-    (this.root.querySelector('.resident-note') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', behavior: this.app.reducedMotion() ? 'auto' : 'smooth' });
+    (this.root.querySelector('.letter.fresh') as HTMLElement | null)?.scrollIntoView({ block: 'nearest', behavior: this.app.reducedMotion() ? 'auto' : 'smooth' });
   }
 
   destroy() { this.root.remove(); }

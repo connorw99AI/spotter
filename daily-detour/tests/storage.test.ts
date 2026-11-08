@@ -13,13 +13,13 @@ describe('saved progress', () => {
     const mem = new MemoryStore();
     const a = new SaveStore(mem);
     a.recordCompletion('ring-road', 1, 16, 'silver', 0);
-    a.recordCompletion('ring-road', 1, 14, 'gold', 2);
+    a.recordCompletion('ring-road', 1, 14, 'gold', 2, ['D', 'r4', 'D']);
     a.recordDaily('2026-11-08', { puzzleId: 'ring-road', rev: 1, moves: 14, medal: 'gold', hints: 2 });
     a.updateSettings({ sound: false, motion: 'reduced' });
     a.saveDraft({ key: 'practice:ring-road', puzzleId: 'ring-road', rev: 1, route: ['D', 'r4'], hints: 1 });
 
     const b = new SaveStore(mem);
-    expect(b.levelRecord('ring-road', 1)).toEqual({ rev: 1, completions: 2, bestMoves: 14, bestMedal: 'gold', bestCleanMoves: 16 });
+    expect(b.levelRecord('ring-road', 1)).toEqual({ rev: 1, completions: 2, bestMoves: 14, bestMedal: 'gold', bestCleanMoves: 16, bestRoute: ['D', 'r4', 'D'] });
     expect(b.data.daily['2026-11-08']).toMatchObject({ moves: 14, medal: 'gold', hints: 2 });
     expect(b.data.settings).toMatchObject({ sound: false, motion: 'reduced', haptics: true, music: true, reminder: false });
     expect(b.draft('practice:ring-road', 'ring-road', 1)?.route).toEqual(['D', 'r4']);

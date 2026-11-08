@@ -23,6 +23,8 @@ export type StepEvent =
   | { type: 'deliver'; order: number; age: number }
   /** Arrived at a shop with a full basket: the order stays there. */
   | { type: 'full'; order: number }
+  /** Arrived before the shop opens: the order stays there. */
+  | { type: 'closed'; order: number; opensAt: number }
   /** Arrived at a destination before collecting its order: nothing delivered. */
   | { type: 'early'; order: number }
   | { type: 'home'; complete: boolean };
@@ -32,7 +34,11 @@ export type BlockReason =
   | { type: 'closed'; edge: number }
   | { type: 'one-way'; edge: number }
   /** The step would push a carried order past its freshness limit. */
-  | { type: 'spoil'; order: number; limit: number };
+  | { type: 'spoil'; order: number; limit: number }
+  /** A garden gate that opens only once its house has had its delivery. */
+  | { type: 'gate'; edge: number; house: NodeId }
+  /** A cobbled street while carrying something fragile. */
+  | { type: 'cobbles'; edge: number; order: number };
 
 export type StepOutcome =
   | { ok: true; state: GameState; events: StepEvent[] }
@@ -76,6 +82,16 @@ export function tryStep(town: Town, state: GameState, to: NodeId): StepOutcome {
     if (mv.reason === 'no-street') return { ok: false, reason: { type: 'no-street', from: state.node, to } };
     return { ok: false, reason: { type: mv.reason, edge: mv.edge } };
   }
+  const street = town.edges[mv.edge];
+  if (street.gate) {
+    const waiting = (town.ordersForHouse.get(street.gate) ?? []).some((i) => state.orders[i].status !== 2);
+    if (waiting) return { ok: false, reason: { type: 'gate', edge: mv.edge, house: street.gate } };
+  }
+  if (street.cobbles) {
+    for (let i = 0; i < state.orders.length; i++) {
+      if (state.orders[i].status === 1 && town.orders[i].fragile) return { ok: false, reason: { type: 'cobbles', edge: mv.edge, order: i } };
+    }
+  }
   const moves = state.moves + 1;
   for (let i = 0; i < state.orders.length; i++) {
     const o = state.orders[i];
@@ -100,7 +116,10 @@ export function tryStep(town: Town, state: GameState, to: NodeId): StepOutcome {
     if (orders[i].status !== 0) continue;
     const def = town.orders[i];
     if (def.from === to) {
-      if (carried < town.capacity) {
+      const opens = town.opensAt.get(to);
+      if (opens !== undefined && moves < opens) {
+        events.push({ type: 'closed', order: i, opensAt: opens });
+      } else if (carried < town.capacity) {
         orders[i] = { status: 1, pickedAt: moves, deliveredAt: -1 };
         carried++;
         events.push({ type: 'pickup', order: i });

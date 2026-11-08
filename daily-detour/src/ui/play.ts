@@ -4,22 +4,32 @@ import { buildTown, streetNeighbours, type Town } from '../core/town';
 import type { NodeId, PuzzleDef, TipDef } from '../core/types';
 import type { Advice } from '../game/advisor';
 import { dailyNumber } from '../game/daily';
-import { puzzleLabel } from '../data/catalog';
+import { chapterOf, puzzleLabel } from '../data/catalog';
 import { RouteEditor, type EditResult } from '../game/editor';
 import { openShareSheet } from './shareSheet';
-import { heartCount } from './screens';
+import { chapterDelivered, heartCount, letterCard } from './screens';
+import { STORY, type Letter } from '../game/story';
+import { portraitSvg } from './portraits';
 import { residentsFor, thankYouNote } from '../game/residents';
 import { runStats } from '../game/meta';
+import { cleverMoments } from '../game/clever';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, clearIcon, heartIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
+import { backIcon, basketIcon, clearIcon, fragileIcon, heartIcon, sparkIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
 import { h, icon, setKids } from './dom';
 import { MapView } from './mapView';
 import { Ride } from './ride';
 import { themeFor, themeForEvent, type Theme } from './theme';
 import { eventOn } from '../game/meta';
-import { describeBlock, describeDoom, describeEvents, describeNodeForStep, describeObjective, houseOf, itemName, orderKind, shopName } from './text';
+import { describeBlock, describeDoom, describeEvents, describeNodeForStep, describeObjective, houseOf, itemLabel, itemName, orderKind, shopName } from './text';
 
 type Tone = 'info' | 'good' | 'warn' | 'tip';
+
+/** Introductions for the rules each chapter is built around. */
+const RULE_INTRO: Record<string, string> = {
+  hours: 'New rule: opening hours. The clock sign shows the move a shop opens. Arrive earlier and the order waits for you.',
+  gate: 'New rule: garden gates. A gate stays shut until the house on its sign has had its delivery, then it’s a shortcut.',
+  fragile: 'New rule: cobbles. Orders marked with a glass are fragile and can’t be carried over cobbled streets.',
+};
 
 interface Message {
   text: string;
@@ -66,6 +76,8 @@ export class PlayScreen {
   private lastAdvice: { key: string; advice: Advice } | null = null;
   private hintFocus: { objective?: NodeId | null; step?: [NodeId, NodeId] | null } = {};
   private chipFocus: NodeId[] = [];
+  /** Your best route as a ghost line: on by default once you have one. */
+  private showGhost = true;
   private chipTimer = 0;
   private selected: NodeId | null = null;
   /** The route last delivered in this visit, so its button can offer a replay. */
@@ -97,7 +109,9 @@ export class PlayScreen {
     this.hints = draft?.hints ?? 0;
     this.theme = opts.mode === 'daily' ? themeForEvent(eventOn(opts.dateKey!), p) : themeFor(p);
     this.map = new MapView(this.town, `Map of ${p.title}. Draw a route from your cottage.`, this.theme);
-    const startTip = this.tip('start');
+    const chapter = chapterOf(p);
+    const ruleTip = chapter?.featured && RULE_INTRO[chapter.featured] && p.number === 1 ? RULE_INTRO[chapter.featured] : undefined;
+    const startTip = this.tip('start') ?? ruleTip;
     this.message = this.editor.moves > 0
       ? { text: 'Welcome back — your route is just as you left it.', tone: 'info' }
       : startTip ? { text: startTip, tone: 'tip' } : { text: p.brief, tone: 'info' };
@@ -309,7 +323,7 @@ export class PlayScreen {
   private reactToEvents(events: readonly StepEvent[], node: NodeId) {
     for (const e of events) {
       if (e.type === 'pickup' || e.type === 'deliver' || e.type === 'full') {
-        this.map.pop(node, e.type, orderKind(this.town, e.order));
+        this.map.pop(node, e.type, orderKind(this.town, e.order), e.type === 'deliver' ? residentsFor(this.opts.puzzle).get(this.town.orders[e.order].to) : undefined);
         if (e.type === 'pickup') this.app.sound.play('pickup');
         if (e.type === 'deliver') this.app.sound.play('deliver');
       }
@@ -552,7 +566,7 @@ export class PlayScreen {
         this.map.renderMarkers(sim.states[i]);
         for (const e of sim.events[i] ?? []) {
           if (e.type === 'pickup' || e.type === 'deliver') {
-            this.map.pop(route[i], e.type, orderKind(this.town, e.order));
+            this.map.pop(route[i], e.type, orderKind(this.town, e.order), e.type === 'deliver' ? residentsFor(this.opts.puzzle).get(this.town.orders[e.order].to) : undefined);
             this.app.sound.play(e.type === 'pickup' ? 'pickup' : 'deliver');
           }
         }
@@ -563,6 +577,7 @@ export class PlayScreen {
         this.ride = null;
         this.root.classList.remove('riding');
         this.rideBar.hidden = true;
+        this.map.stopCamera();
         if (complete) this.complete(route.length - 1);
         else {
           this.later(() => {
@@ -575,12 +590,14 @@ export class PlayScreen {
       });
     this.ride = ride;
     this.renderControls();
+    if (!this.app.reducedMotion()) this.map.startCamera();
     ride.start();
   }
 
   private cancelRide() {
     if (!this.ride) return;
     this.ride.cancel();
+    this.map.stopCamera();
     this.ride = null;
     this.root.classList.remove('riding');
     this.rideBar.hidden = true;
@@ -594,7 +611,10 @@ export class PlayScreen {
     const p = this.opts.puzzle;
     const medal = medalFor(moves, this.t);
     const heartsBefore = heartCount(this.app);
-    const res = this.app.store.recordCompletion(p.id, p.rev, moves, medal, this.hints);
+    const chapter = chapterOf(p);
+    const before = chapter ? chapterDelivered(this.app, chapter) : 0;
+    const route = [...this.editor.route];
+    const res = this.app.store.recordCompletion(p.id, p.rev, moves, medal, this.hints, route);
     if (this.opts.mode === 'daily') {
       this.app.store.recordDaily(this.opts.dateKey!, { puzzleId: p.id, rev: p.rev, moves, medal, hints: this.hints });
     }
@@ -602,20 +622,25 @@ export class PlayScreen {
     this.deliveredRoute = this.routeKey();
     this.app.sound.play('complete');
     this.app.haptics([20, 60, 30]);
-    this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore);
+    const after = chapter ? chapterDelivered(this.app, chapter) : 0;
+    const letter = chapter ? STORY[chapter.id]?.letters.find((l) => l.at > before && l.at <= after) : undefined;
+    this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore, letter);
   }
 
-  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest: number | undefined, heartsGained: number) {
+  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest: number | undefined, heartsGained: number, letter?: Letter) {
     const p = this.opts.puzzle;
     const rec = this.app.store.levelRecord(p.id, p.rev)!;
     const daily = this.opts.mode === 'daily' ? { number: dailyNumber(this.opts.dateKey!), dateKey: this.opts.dateKey! } : undefined;
     const run = daily ? runStats(Object.keys(this.app.store.data.daily), daily.dateKey).current : undefined;
     const status = h('p', { class: 'share-status', 'aria-live': 'polite' });
+    const moments = cleverMoments(this.town, this.editor.route, this.t.gold);
     // Thank-you notes from the residents who got their orders.
     const residents = residentsFor(p);
     const notes = p.orders.slice(0, 2).map((o, i) => {
       const k = this.town.shopKind.get(o.from)!;
-      return h('li', {}, h('span', { class: 'note-who' }, `${residents.get(o.to)}, House ${this.town.houseLetter.get(o.to)}`), h('span', {}, `“${thankYouNote(p, i, k)}”`));
+      const li = h('li', {}, h('span', { class: 'note-face', 'aria-hidden': 'true' }), h('span', { class: 'note-text' }, h('span', { class: 'note-who' }, `${residents.get(o.to)}, House ${this.town.houseLetter.get(o.to)}`), h('span', {}, `“${thankYouNote(p, i, k)}”`)));
+      li.querySelector('.note-face')!.innerHTML = portraitSvg(residents.get(o.to)!, 36);
+      return li;
     });
     const note = medal === 'gold'
       ? (moves === this.t.gold ? 'The shortest route there is.' : 'Gold!')
@@ -630,12 +655,16 @@ export class PlayScreen {
         : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'book' }) }, 'Back to the route book');
     const best = previousBest === undefined ? 'First delivery' : newBest ? `New best (was ${previousBest})` : `Best ${rec.bestMoves}`;
     const card = h('div', { class: `docket docket-${medal}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'docket-title' },
-      h('p', { class: 'docket-kicker' }, daily ? `Daily #${daily.number} delivered` : `${puzzleLabel(p)} delivered`),
+      h('p', { class: 'docket-kicker' }, daily ? `Daily #${daily.number}: Pip delivered it` : `${puzzleLabel(p)}: Pip delivered it`),
       h('h2', { id: 'docket-title' }, p.title),
       h('div', { class: `stamp stamp-${medal}`, 'aria-label': `${medalName[medal]} stamp` },
         h('span', { class: 'stamp-medal' }, medalName[medal]), h('span', { class: 'stamp-moves' }, `${moves} moves`)),
       h('p', { class: 'docket-note' }, note),
+      medal !== 'gold' && moves - this.t.gold <= 2
+        ? h('p', { class: 'near-miss' }, `So close: just ${moves - this.t.gold} ${moves - this.t.gold === 1 ? 'move' : 'moves'} from gold.`) : null,
+      moments.length ? h('ul', { class: 'docket-moments' }, ...moments.slice(0, 2).map((m) => h('li', { class: `moment moment-${m.kind}` }, icon(sparkIcon, 18), m.text))) : null,
       heartsGained > 0 ? h('p', { class: 'docket-hearts' }, icon(heartIcon, 18), `+${heartsGained} ${heartsGained === 1 ? 'heart' : 'hearts'} for the village`) : null,
+      letter ? letterCard(letter, true) : null,
       h('ul', { class: 'docket-notes' }, ...notes),
       h('dl', { class: 'docket-facts' },
         h('div', {}, h('dt', {}, 'Your route'), h('dd', {}, `${moves}`)),
@@ -662,7 +691,7 @@ export class PlayScreen {
     this.docket.hidden = false;
     this.later(() => this.app.sound.play('stamp'), this.app.reducedMotion() ? 0 : 260);
     this.root.classList.add('docket-open');
-    this.later(() => (card.querySelector('.btn-primary') as HTMLElement | null)?.focus(), 50);
+    this.later(() => (card.querySelector('.btn-primary') as HTMLElement | null)?.focus({ preventScroll: true }), 50);
   }
 
   private confetti(medal: Medal): HTMLElement {
@@ -723,12 +752,18 @@ export class PlayScreen {
   private renderAll() {
     const s = this.editor.state;
     this.map.renderRoute(this.editor.route);
+    this.renderGhost();
     this.map.renderMarkers(s, this.chipFocus);
     this.renderOverlay();
     this.renderOrders();
     this.renderStats();
     this.renderControls();
     this.renderCoach();
+  }
+
+  private renderGhost() {
+    const rec = this.app.store.levelRecord(this.opts.puzzle.id, this.opts.puzzle.rev);
+    this.map.renderGhost(this.showGhost && rec?.bestRoute ? rec.bestRoute : null);
   }
 
   private renderOverlay() {
@@ -753,10 +788,11 @@ export class PlayScreen {
         class: `chip chip-${st === 0 ? 'waiting' : st === 1 ? 'carried' : 'done'}`,
         type: 'button',
         style: `--c:${shopColour[k].fill};--cd:${shopColour[k].deep};--ct:${shopColour[k].tint}`,
-        'aria-label': `${itemName[k]} from the ${shopName[k]} to House ${houseOf(this.town, i)}: ${statusText}${o.fresh ? `. Must arrive within ${o.fresh} moves of pickup` : ''}`,
+        'aria-label': `${itemLabel(this.town, i)} from the ${shopName[k]} to House ${houseOf(this.town, i)}: ${statusText}${o.fresh ? `. Must arrive within ${o.fresh} moves of pickup` : ''}${o.fragile ? '. Fragile: no cobbles' : ''}${this.town.opensAt.has(o.from) ? `. Shop opens at move ${this.town.opensAt.get(o.from)}` : ''}`,
         onclick: () => this.focusOrder(i),
       },
         icon(itemIcon[k], 20, 'chip-ico'),
+        o.fragile ? icon(fragileIcon, 16, 'chip-fragile') : null,
         h('span', { class: 'chip-to' }, h('span', { class: 'chip-arrow', 'aria-hidden': 'true' }, '→'), houseOf(this.town, i)),
         st === 2 ? h('span', { class: 'chip-tag chip-tick', 'aria-hidden': 'true' }, '✓')
           : left !== null ? h('span', { class: `chip-tag chip-fresh${left <= 1 ? ' urgent' : ''}`, 'aria-hidden': 'true' }, `${left}`)
@@ -795,6 +831,7 @@ export class PlayScreen {
       h('span', { class: 'target' }, `Gold ${this.t.gold}`),
       rec ? h('span', { class: 'best' }, `Best ${rec.bestMoves}`) : null,
       this.hints > 0 ? h('span', { class: 'hint-count' }, `${this.hints} ${this.hints === 1 ? 'hint' : 'hints'}`) : null,
+      rec?.bestRoute ? h('button', { class: `ghost-toggle${this.showGhost ? ' on' : ''}`, type: 'button', 'aria-pressed': String(this.showGhost), onclick: () => { this.showGhost = !this.showGhost; this.renderGhost(); this.renderStats(); } }, this.showGhost ? 'Hide best route' : 'Show best route') : null,
       basket,
     );
   }

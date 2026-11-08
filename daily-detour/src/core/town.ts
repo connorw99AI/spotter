@@ -14,6 +14,9 @@ export interface Town {
   readonly orders: readonly OrderDef[];
   readonly capacity: number;
   readonly shopKind: ReadonlyMap<NodeId, ShopKind>;
+  /** Shops with opening hours, and the latest opening move (for the solver's state key). */
+  readonly opensAt: ReadonlyMap<NodeId, number>;
+  readonly maxOpen: number;
   readonly houseLetter: ReadonlyMap<NodeId, string>;
   readonly ordersAtShop: ReadonlyMap<NodeId, readonly number[]>;
   readonly ordersForHouse: ReadonlyMap<NodeId, readonly number[]>;
@@ -50,6 +53,7 @@ export function buildTown(def: PuzzleDef): Town {
     if (!e.oneWay) succ.get(e.b)?.push(e.a);
   });
   const shopKind = new Map<NodeId, ShopKind>(def.shops.map((s) => [s.node, s.kind]));
+  const opensAt = new Map<NodeId, number>(def.shops.filter((s) => s.opensAt).map((s) => [s.node, s.opensAt!]));
   const houseLetter = new Map<NodeId, string>(def.houses.map((h) => [h.node, h.letter]));
   const ordersAtShop = new Map<NodeId, number[]>();
   const ordersForHouse = new Map<NodeId, number[]>();
@@ -70,6 +74,8 @@ export function buildTown(def: PuzzleDef): Town {
     orders: def.orders,
     capacity: def.capacity ?? Number.POSITIVE_INFINITY,
     shopKind,
+    opensAt,
+    maxOpen: Math.max(0, ...opensAt.values()),
     houseLetter,
     ordersAtShop,
     ordersForHouse,

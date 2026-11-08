@@ -65,3 +65,23 @@ describe('residents', () => {
     expect(thankYouNote(PUZZLES[0], 0, 'bakery').length).toBeGreaterThan(10);
   });
 });
+
+import { STORY, chapterKeepsakes, lettersFor } from '../src/game/story';
+import { CHAPTERS } from '../src/data/catalog';
+
+describe('chapter stories', () => {
+  it('has letters for every chapter, the last one at the chapter’s end', () => {
+    for (const c of CHAPTERS) {
+      const s = STORY[c.id];
+      expect(s, c.id).toBeDefined();
+      expect(s.letters[s.letters.length - 1].at).toBe(c.ids.length);
+      expect(s.letters[0].at).toBe(1);
+    }
+  });
+
+  it('unlocks letters by deliveries and keepsakes by finished chapters', () => {
+    expect(lettersFor('market-town', 0)).toEqual([]);
+    expect(lettersFor('market-town', 9).map((l) => l.at)).toEqual([1, 8]);
+    expect(chapterKeepsakes({ classic: { delivered: 20, total: 20 }, riverside: { delivered: 23, total: 24 } })).toEqual(['bicycle']);
+  });
+});

@@ -53,6 +53,7 @@ export function validatePuzzle(def: PuzzleDef): string[] {
     if (pairs.has(k)) errs.push(`duplicate street ${e.a}-${e.b}`);
     pairs.add(k);
     if (e.closed && e.oneWay) errs.push(`street ${e.a}-${e.b} cannot be both closed and one-way`);
+    if (e.gate && e.closed) errs.push(`street ${e.a}-${e.b} cannot be both a gate and closed`);
   });
   if (!ids.has(def.depot)) errs.push('depot is not a node');
   const used = new Set<string>([def.depot]);
@@ -83,6 +84,8 @@ export function validatePuzzle(def: PuzzleDef): string[] {
   for (const h of def.houses) {
     if (!def.orders.some((o) => o.to === h.node)) errs.push(`house ${h.letter} expects nothing`);
   }
+  for (const s of def.shops) if (s.opensAt !== undefined && (!Number.isInteger(s.opensAt) || s.opensAt < 1)) errs.push(`shop at ${s.node} has bad opening time`);
+  for (const e of def.edges) if (e.gate && !houseNodes.has(e.gate)) errs.push(`gate on ${e.a}-${e.b} names a node that is not a house`);
   for (const s of def.shops) {
     if (!def.orders.some((o) => o.from === s.node)) errs.push(`shop at ${s.node} has no orders`);
   }

@@ -1,6 +1,7 @@
 import type { PuzzleDef, Tier } from '../core/types';
 import { decodePuzzle } from './codec';
-import { DAILY_BANDS, DAILY_CODES, GENERATED_PACKS } from './generated';
+import { DAILY_BANDS, DAILY_CODES } from './dailies';
+import { GENERATED_PACKS } from './generated';
 import { PUZZLES } from './puzzles';
 
 export interface Chapter {
@@ -8,13 +9,15 @@ export interface Chapter {
   title: string;
   blurb: string;
   ids: string[];
+  /** The new rule this chapter is built around, if any. */
+  featured?: string;
 }
 
 const pad = (n: number, w: number) => String(n).padStart(w, '0');
 
 export const CHAPTERS: Chapter[] = [
   { id: 'classic', title: 'Classic routes', blurb: 'The twenty hand-made routes that teach every rule.', ids: PUZZLES.map((p) => p.id) },
-  ...GENERATED_PACKS.map((p) => ({ id: p.id, title: p.title, blurb: p.blurb, ids: p.codes.map((_, i) => `${p.id}-${pad(i + 1, 2)}`) })),
+  ...GENERATED_PACKS.map((p) => ({ id: p.id, title: p.title, blurb: p.blurb, featured: p.featured, ids: p.codes.map((_, i) => `${p.id}-${pad(i + 1, 2)}`) })),
 ];
 
 const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));

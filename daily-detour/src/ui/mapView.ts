@@ -1,7 +1,8 @@
 import type { GameState } from '../core/rules';
 import { edgeBetween, type Town } from '../core/town';
 import type { NodeId, ShopKind } from '../core/types';
-import { C, courierSvg, homeIcon, itemIcon, shopColour } from './art';
+import { C, courierSvg, fragileIcon, homeIcon, itemIcon, shopColour } from './art';
+import { portraitSvg } from './portraits';
 import {
   U, add, dist, makeSeg, mul, nodePt, pathD, pointAlong, quadAt, segAt, segTangent, streetSeg,
   type Pt, type Seg,
@@ -41,6 +42,7 @@ export class MapView {
   private readonly gRoute: SVGGElement;
   private readonly gTrail: SVGGElement;
   private readonly gUnder: SVGGElement;
+  private readonly gGhost: SVGGElement;
   private readonly gMarkers: SVGGElement;
   private readonly gOver: SVGGElement;
   private readonly gFx: SVGGElement;
@@ -84,13 +86,14 @@ export class MapView {
     this.root.className = 'map-stack';
     this.root.append(scene, ambient, this.svg);
     this.gUnder = el('g', { class: 'layer-under' });
+    this.gGhost = el('g', { class: 'layer-ghost' });
     this.gRoute = el('g', { class: 'layer-route' });
     this.gTrail = el('g', { class: 'layer-trail' });
     this.gMarkers = el('g', { class: 'layer-markers' });
     this.gOver = el('g', { class: 'layer-over' });
     this.courier = el('g', { class: 'courier', visibility: 'hidden' }, `<g class="courier-flip">${courierSvg()}</g>`);
     this.gFx = el('g', { class: 'layer-fx' });
-    this.svg.append(this.gUnder, this.gRoute, this.gTrail, this.gMarkers, this.gOver, this.courier, this.gFx);
+    this.svg.append(this.gGhost, this.gUnder, this.gRoute, this.gTrail, this.gMarkers, this.gOver, this.courier, this.gFx);
   }
 
   // ─────────────────────────────── static art ───────────────────────────────
@@ -110,8 +113,34 @@ export class MapView {
     [[0.2, 0.25, 0], [0.7, 0.65, -22], [0.35, 0.9, -45]].forEach(([fx, fy, delay], i) => {
       s += `<g class="cloud" style="animation-delay:${delay}s"><ellipse cx="${f1(b.x + b.w * fx)}" cy="${f1(b.y + b.h * fy)}" rx="${f1(r * 0.28)}" ry="${f1(r * 0.15)}" fill="url(#m-cloud)"/>${i === 1 ? `<ellipse cx="${f1(b.x + b.w * fx + r * 0.16)}" cy="${f1(b.y + b.h * fy - r * 0.06)}" rx="${f1(r * 0.17)}" ry="${f1(r * 0.11)}" fill="url(#m-cloud)"/>` : ''}</g>`;
     });
+    s += this.particles();
     g.innerHTML = s;
     return g;
+  }
+
+  /** Seasonal life in the air: petals, butterflies, leaves, fireflies or snow. */
+  private particles(): string {
+    const b = this.box;
+    const kind = this.theme.name;
+    let seed = 7;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const n = kind === 'winter' ? 34 : kind === 'evening' ? 16 : kind === 'summer' ? 7 : 18;
+    let s = `<g class="particles particles-${kind}">`;
+    for (let i = 0; i < n; i++) {
+      const x = b.x + rnd() * b.w, y = b.y + rnd() * b.h;
+      const dur = (kind === 'winter' ? 9 : kind === 'evening' ? 6 : 14) + rnd() * 8;
+      const delay = -rnd() * dur;
+      const dx = (kind === 'winter' ? 30 : kind === 'evening' ? 24 : 120) * (rnd() < 0.5 ? -1 : 1) * (0.5 + rnd());
+      const dy = kind === 'evening' ? -30 - rnd() * 30 : kind === 'summer' ? (rnd() - 0.5) * 80 : b.h * 0.45 + rnd() * 120;
+      const style = `--dx:${f1(dx)}px;--dy:${f1(dy)}px;--spin:${Math.round(rnd() * 540 - 270)}deg;animation-duration:${f1(dur)}s;animation-delay:${f1(delay)}s`;
+      const shape = kind === 'spring' ? `<ellipse rx="3.4" ry="2" fill="${rnd() < 0.5 ? '#F7CFDC' : '#FFFFFF'}" opacity=".9"/>`
+        : kind === 'autumn' ? `<path d="M0-4C3-3 4 1 0 5-4 1-3-3 0-4Z" fill="${['#D9853C', '#C46A3E', '#EDAE5A'][i % 3]}"/>`
+        : kind === 'winter' ? `<circle r="${f1(1.4 + rnd() * 1.8)}" fill="#FFFFFF" opacity=".95"/>`
+        : kind === 'evening' ? `<circle r="2.2" fill="#FFF3B0"/><circle r="7" fill="#FFE38A" opacity=".25"/>`
+        : `<g class="wings"><path d="M0 0C-5-6-9-2-6 2Z" fill="#F2D36B"/><path d="M0 0C5-6 9-2 6 2Z" fill="#F2D36B"/></g>`;
+      s += `<g transform="translate(${f1(x)} ${f1(y)})"><g class="particle" style="${style}">${shape}</g></g>`;
+    }
+    return s + '</g>';
   }
 
   private edgeD(i: number): string {
@@ -187,6 +216,11 @@ export class MapView {
     return segs;
   }
 
+  /** Your best route so far, drawn faintly beneath the one you're planning. */
+  renderGhost(route: readonly NodeId[] | null) {
+    this.gGhost.innerHTML = route && route.length > 1 ? `<path d="${pathD(this.routeSegments(route))}" class="ghost-line"/>` : '';
+  }
+
   renderRoute(route: readonly NodeId[], dim = false) {
     const segs = this.routeSegments(route);
     if (!segs.length) { this.gRoute.innerHTML = ''; return; }
@@ -245,6 +279,12 @@ export class MapView {
       const done = waiting.length === 0;
       let extra = '';
       if (!done && waiting.length > 1) extra += `<g transform="translate(18 -18)"><circle r="10" class="mk-count"/><text y="4.5" class="mk-count-t">${waiting.length}</text></g>`;
+      const opens = t.opensAt.get(shop.node);
+      if (!done && opens !== undefined) {
+        const open = state.moves >= opens;
+        extra += `<g transform="translate(${fresh !== undefined ? -24 : 0} 27)"><rect x="${open ? -23 : -19}" y="-9" width="${open ? 46 : 38}" height="18" rx="9" class="mk-hours${open ? ' open' : ''}"/><circle cx="-9" r="5" fill="#FFFAF0" stroke="currentColor" stroke-width="1.6" class="mk-hours-ico"/><path d="M-9-2.8V0l2 1.4" fill="none" stroke="currentColor" stroke-width="1.4" class="mk-hours-ico"/><text x="${open ? 7 : 5}" y="4.6" class="mk-hours-t">${open ? 'open' : opens}</text></g>`;
+      }
+      if (!done && ids.some((i) => t.orders[i].fragile)) extra += `<g transform="translate(-19 -18)"><circle r="10" class="mk-fragile"/><g transform="scale(.62)" class="mk-fragile-ico">${fragileIcon}</g></g>`;
       if (!done && fresh !== undefined) extra += `<g transform="translate(0 27)"><rect x="-17" y="-9" width="34" height="18" rx="9" class="mk-fresh"/><path d="M-9.5-4.5v9M-13.4-2.2l7.8 4.4M-13.4 2.2l7.8-4.4" class="mk-fresh-ico"/><text x="5" y="5" class="mk-fresh-t">${fresh}</text></g>`;
       if (done) extra += `<g transform="translate(17 -17)"><circle r="9" fill="${C.moss}" stroke="#FFFAF0" stroke-width="2"/><path d="M-4 0l3 3 5-6" fill="none" stroke="#FFFAF0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
       s += `<g class="mk mk-shop${done ? ' done' : ''}${focus.includes(shop.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
@@ -265,6 +305,21 @@ export class MapView {
         <path d="M-19-9 0-27 19-9Z" class="mk-roof"/>
         <circle r="19" class="mk-house-disc"/><text y="7.5" class="mk-letter">${house.letter}</text>${bubbles}</g></g>`;
     }
+    // Garden gates: shut until their house has its delivery, then swung open.
+    t.edges.forEach((e, ei) => {
+      if (!e.gate) return;
+      const open = (t.ordersForHouse.get(e.gate) ?? []).every((i) => state.orders[i].status === 2);
+      const g = streetSeg(t, ei, e.a);
+      const seg = makeSeg(g.p0, g.p1, g.c);
+      const mid = segAt(seg, 0.5), tg = segTangent(seg, 0.5);
+      const ang = (Math.atan2(tg.y, tg.x) * 180) / Math.PI;
+      const letter = t.houseLetter.get(e.gate);
+      s += `<g class="gate${open ? ' open' : ''}" transform="translate(${f1(mid.x)} ${f1(mid.y)}) rotate(${f1(ang)})">
+        <rect x="-4.5" y="-20" width="9" height="8" rx="2" class="gate-post"/><rect x="-4.5" y="12" width="9" height="8" rx="2" class="gate-post"/>
+        <g class="gate-leaf"><rect x="-4" y="-13" width="8" height="26" rx="2" class="gate-wood"/><path d="M-4-6.5H4M-4 0H4M-4 6.5H4" class="gate-slat"/></g>
+        <g transform="rotate(${f1(-ang)}) translate(20 -18)"><rect x="-13" y="-11" width="26" height="22" rx="6" class="gate-tag"/><text y="5.5" class="gate-tag-t">${open ? '✓' : letter}</text></g>
+      </g>`;
+    });
     this.gMarkers.innerHTML = s;
   }
 
@@ -326,8 +381,17 @@ export class MapView {
     }
   }
 
-  pop(node: NodeId, kind: 'pickup' | 'deliver' | 'full', shop: ShopKind) {
+  pop(node: NodeId, kind: 'pickup' | 'deliver' | 'full', shop: ShopKind, who?: string) {
     const p = nodePt(this.town, node);
+    if (kind === 'deliver' && who) {
+      // The resident pops out to say thank you.
+      this.fx(`<g class="resident-pop" transform="translate(${f1(p.x + 22)} ${f1(p.y - 58)})"><g class="resident-pop-in">
+        <path d="M-6 18 0 26 6 18Z" fill="#FFFAF0" stroke="#4E7D46" stroke-width="2.4" stroke-linejoin="round"/>
+        <circle r="23" fill="#FFFAF0" stroke="#4E7D46" stroke-width="2.6"/>
+        <svg x="-20" y="-20" width="40" height="40" viewBox="-20 -20 40 40">${portraitSvg(who, 40).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')}</svg>
+        <g transform="translate(17 -17)"><path d="M0 6C-6 2-7.4-2-5.4-4.6-3.4-7 0-6 0-4 0-6 3.4-7 5.4-4.6 7.4-2 6 2 0 6Z" fill="#D4688A" stroke="#FFFAF0" stroke-width="1.6"/></g>
+      </g></g>`, 1700);
+    }
     const sign = kind === 'pickup' ? '+' : kind === 'deliver' ? '✓' : '…';
     const cls = kind === 'deliver' ? 'pop pop-deliver' : kind === 'full' ? 'pop pop-full' : 'pop';
     this.fx(`<g class="${cls}" transform="translate(${f1(p.x)} ${f1(p.y - 34)})"><g class="pop-in">
@@ -359,6 +423,38 @@ export class MapView {
   placeCourier(segs: readonly Seg[], length: number) {
     const { p, tangent } = pointAlong(segs, length);
     this.showCourierAt(p, tangent.x < -0.01);
+    if (this.camera) this.follow(p);
+  }
+
+  // ───────────── ride camera: a gentle zoom that follows the courier ─────────────
+  private camera: { ctm: DOMMatrix; stack: DOMRect; zoom: number; target: number } | null = null;
+
+  startCamera(zoom = 1.35) {
+    const ctm = this.svg.getScreenCTM();
+    if (!ctm) return;
+    this.camera = { ctm, stack: this.root.getBoundingClientRect(), zoom: 1, target: zoom };
+    this.root.classList.add('camera');
+  }
+
+  private follow(p: Pt) {
+    const c = this.camera!;
+    c.zoom += (c.target - c.zoom) * 0.06;
+    const pt = new DOMPoint(p.x, p.y).matrixTransform(c.ctm);
+    const px = pt.x - c.stack.left, py = pt.y - c.stack.top;
+    const W = c.stack.width, H = c.stack.height, s = c.zoom;
+    const tx = Math.min(0, Math.max(W - s * W, W / 2 - s * px));
+    const ty = Math.min(0, Math.max(H - s * H, H / 2 - s * py));
+    this.root.style.transform = `translate(${tx.toFixed(1)}px, ${ty.toFixed(1)}px) scale(${s.toFixed(3)})`;
+  }
+
+  stopCamera() {
+    if (!this.camera) return;
+    this.camera = null;
+    this.root.classList.remove('camera');
+    this.root.classList.add('camera-out');
+    this.root.style.transform = '';
+    const t = window.setTimeout(() => { this.root.classList.remove('camera-out'); this.fxTimers.delete(t); }, 700);
+    this.fxTimers.add(t);
   }
 
   showCourierAt(p: Pt, faceLeft: boolean) {

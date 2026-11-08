@@ -39,7 +39,7 @@ export const PUZZLES: PuzzleDef[] = [
     orders: [['K', 'A']],
     hint: 'Ride round the loop: the Bakery first, then House A on your way home.',
     tips: [
-      { on: 'start', text: 'Drag from your cottage along the street to the Bakery. Tapping the next corner works too.' },
+      { on: 'start', text: 'You’re Pip, the town’s new courier. Drag from your cottage along the street to the Bakery. Tapping the next corner works too.' },
       { on: 'early', text: 'House A is waiting for bread from the Bakery. Collect it first, then come back.' },
       { on: 'pickup', text: 'Bread’s in the basket. Now ride on to House A.' },
       { on: 'allDelivered', text: 'Delivered! Finish the round by riding home.' },

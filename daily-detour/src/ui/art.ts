@@ -74,6 +74,10 @@ export const bookIcon = `<path d="M-9-7c3-1.6 6-1.6 9 .6 3-2.2 6-2.2 9-.6V8C6 6.
 export const heartIcon = `<path d="M0 9C-9 3-11-3-8-7-5-10.6-1.4-9 0-6 1.4-9 5-10.6 8-7 11-3 9 3 0 9Z" fill="#D4688A" stroke="#9B3E5C" stroke-width="1.4" stroke-linejoin="round"/><path d="M-5.6-5.4c-1.4.4-2.4 1.6-2.4 3" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" opacity=".7"/>`;
 export const flameIcon = `<path d="M0 10C-6 10-8 5-7 1-6-3-2-5-2-10 2-7 3-4 2-1 4-2 5-4 5-5 8-1 8 4 6 7 4 9 2 10 0 10Z" fill="#E0B04A" stroke="#A67C1E" stroke-width="1.3" stroke-linejoin="round"/><path d="M0 9C-3 9-3 5-1 3 0 5 2 5 2 4 3 6 2 9 0 9Z" fill="#B85C38"/>`;
 export const calendarIcon = `<rect x="-9" y="-7" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M-9-2h18M-4-10v5M4-10v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="-3" cy="3" r="1.6" fill="currentColor"/><circle cx="3" cy="3" r="1.6" fill="currentColor"/>`;
+export const clockIcon = `<circle r="9" fill="#FFFAF0" stroke="currentColor" stroke-width="2"/><path d="M0-5V0l3.6 2.4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>`;
+export const gateIcon = `<path d="M-9-8v17M9-8v17" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M-9-4H9M-9 4H9M-5-4V4M0-4V4M5-4V4" stroke="currentColor" stroke-width="1.8"/>`;
+export const fragileIcon = `<path d="M-5.5-9h11l-1 6c-.5 3-2.5 4.5-4.5 4.5S-4-.5-4.5-3Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M0 1.5V8M-4 9h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M-1-7.5 1-5-1-3" fill="none" stroke="currentColor" stroke-width="1.2"/>`;
+export const sparkIcon = `<path d="M0-10 2.4-2.4 10 0 2.4 2.4 0 10-2.4 2.4-10 0-2.4-2.4Z" fill="#E0B04A" stroke="#A67C1E" stroke-width="1.2" stroke-linejoin="round"/>`;
 export const infoIcon = `<circle r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M0-1v6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cy="-5" r="1.5" fill="currentColor"/>`;
 
 /** Mechanic badges used on route-book tickets. */
@@ -82,6 +86,9 @@ export const mechanicIcon: Record<string, { svg: string; label: string }> = {
   fresh: { svg: snowIcon, label: 'Melts or wilts' },
   oneway: { svg: oneWayIcon, label: 'One-way streets' },
   capacity: { svg: basketIcon, label: 'Basket holds two' },
+  hours: { svg: clockIcon, label: 'Opening hours' },
+  gate: { svg: gateIcon, label: 'Garden gates' },
+  fragile: { svg: fragileIcon, label: 'Cobbles and fragile orders' },
 };
 
 /**

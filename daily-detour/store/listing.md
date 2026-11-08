@@ -18,6 +18,9 @@ Every route is a small puzzle. Ice cream melts if you dawdle. Roadworks close th
 - A new daily route for everyone, gentle on Mondays and trickiest at the weekend
 - 140 routes in the route book, from first lessons to tricky rounds
 - Gold, silver and bronze stamps, with the gold target always shown
+- Each chapter adds a new idea: opening hours, garden gates, cobbles for fragile orders
+- The game names your clever detours, and shows your best route as a ghost to beat
+- Meet the neighbours: portraits, thank-you notes and a story told in letters
 - Hints that work from your own route: a strategic nudge, the next objective, or one step
 - Restore your village with the hearts your deliveries earn
 - Seasonal events: Blossom Week, the Summer Fete, the Harvest Fair and Winter Lights

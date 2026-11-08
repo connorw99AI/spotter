@@ -1,12 +1,14 @@
 import { medalName, type Medal } from '../core/medals';
 import type { PuzzleDef, Tier } from '../core/types';
 import { dailyNumber, dailyPace, dailyPuzzle, lastFreshDaily, msUntilNextUtcDay, utcDateKey } from '../game/daily';
-import { BOOK_IDS, CHAPTERS, getChapter, getPuzzle, puzzleLabel } from '../data/catalog';
+import { BOOK_IDS, CHAPTERS, getChapter, getPuzzle, puzzleLabel, type Chapter } from '../data/catalog';
 import { PROJECTS, daysLeftInEvent, eventOn, heartsFrom, projectState, runStats } from '../game/meta';
 import { openShareSheet } from './shareSheet';
+import { STORY, lettersFor, type Letter } from '../game/story';
+import { portraitSvg } from './portraits';
 import { isNative, setDailyReminder } from '../platform/native';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, bookIcon, calendarIcon, coneIcon, courierSvg, flameIcon, gearIcon, heartIcon, infoIcon, itemIcon, mechanicIcon, shareIcon, C } from './art';
+import { backIcon, basketIcon, bookIcon, calendarIcon, clockIcon, coneIcon, fragileIcon, gateIcon, courierSvg, flameIcon, gearIcon, heartIcon, infoIcon, itemIcon, mechanicIcon, shareIcon, C } from './art';
 import { buildTown } from '../core/town';
 import { seeded } from './geometry';
 import { miniMapSvg } from './scene';
@@ -95,6 +97,22 @@ export function bookProgress(app: AppServices) {
     if (rec) { delivered++; if (rec.bestMedal === 'gold') golds++; } else if (!next) next = p;
   }
   return { delivered, golds, total: BOOK_IDS.length, next };
+}
+
+export function chapterDelivered(app: AppServices, c: Chapter): number {
+  return c.ids.filter((id) => { const p = getPuzzle(id)!; return !!app.store.levelRecord(p.id, p.rev); }).length;
+}
+
+export function chapterProgressAll(app: AppServices): Record<string, { delivered: number; total: number }> {
+  return Object.fromEntries(CHAPTERS.map((c) => [c.id, { delivered: chapterDelivered(app, c), total: c.ids.length }]));
+}
+
+export function letterCard(l: Letter, fresh = false): HTMLElement {
+  const el = h('article', { class: `letter${fresh ? ' fresh' : ''}` },
+    h('span', { class: 'letter-face', 'aria-hidden': 'true' }),
+    h('div', { class: 'letter-body' }, h('p', { class: 'letter-from' }, fresh ? `New letter from ${l.from}` : l.from), h('p', { class: 'letter-text' }, `“${l.text}”`)));
+  el.querySelector('.letter-face')!.innerHTML = portraitSvg(l.from, 44);
+  return el;
 }
 
 export function heartCount(app: AppServices): number {
@@ -273,6 +291,10 @@ export class ChapterScreen implements Screen {
   constructor(private readonly app: AppServices, chapterId: string) {
     const c = getChapter(chapterId)!;
     const ps = c.ids.map((id) => getPuzzle(id)!);
+    const story = STORY[c.id];
+    const delivered = chapterDelivered(app, c);
+    const letters = lettersFor(c.id, delivered).reverse();
+    const nextLetter = story?.letters.find((l) => l.at > delivered);
     const next = ps.find((p) => !app.store.levelRecord(p.id, p.rev));
     const groups: [string, string, PuzzleDef[]][] = c.id === 'classic'
       ? (['tutorial', 'approachable', 'intermediate', 'challenging'] as Tier[]).map((t) => [tierName[t], tierBlurb[t], ps.filter((p) => p.tier === t)])
@@ -283,6 +305,12 @@ export class ChapterScreen implements Screen {
       topBar(c.title, () => app.go({ screen: 'book' }), 'Back to the route book'),
       h('div', { class: 'book-body' },
         h('p', { class: 'book-summary' }, c.blurb),
+        story ? h('section', { class: 'letters', 'aria-label': 'Letters' },
+          h('h2', {}, story.title),
+          ...letters.slice(0, 1).map((l) => letterCard(l)),
+          letters.length > 1 ? h('details', { class: 'older-letters' }, h('summary', {}, `Earlier letters (${letters.length - 1})`), ...letters.slice(1).map((l) => letterCard(l))) : null,
+          nextLetter ? h('p', { class: 'letter-next muted' }, `${letters.length ? 'Next letter' : 'The first letter'} arrives after ${nextLetter.at} ${nextLetter.at === 1 ? 'delivery' : 'deliveries'} in this chapter (${delivered} so far).`)
+            : h('p', { class: 'letter-next muted' }, `Chapter finished: ${story.keepsake.label} is now in your village.`)) : null,
         ...groups.filter(([, , list]) => list.length).map(([name, blurb, list], gi) => h('section', { class: 'book-section', 'aria-labelledby': `grp-${gi}` },
           h('h2', { id: `grp-${gi}` }, name),
           h('p', { class: 'muted' }, blurb),
@@ -401,6 +429,9 @@ export class HowScreen implements Screen {
           rule(itemIcon.icecream, 'Fresh orders', 'Ice cream melts and tulips wilt. The number on the order is how many moves it can travel after pickup. Shops hand orders over as soon as you pass, so time your visit.'),
           rule(mechanicIcon.oneway.svg, 'One-way streets', 'Arrows on the road show the only direction you can ride.'),
           rule(basketIcon, 'A basket for two', 'On some rounds the basket holds two orders. Pass a shop with a full basket and the order waits for you — which can be handy.'),
+          rule(clockIcon, 'Opening hours', 'A clock sign on a shop shows the move it opens. Arrive earlier and the order waits for you.'),
+          rule(gateIcon, 'Garden gates', 'A gate opens once the house on its sign has had its delivery. Deliver there early and use the shortcut.'),
+          rule(fragileIcon, 'Cobbles', 'Fragile orders, marked with a glass, can’t be carried over cobbled streets. Take the smooth way round.'),
         ),
         h('h2', {}, 'Controls'),
         h('ul', { class: 'controls-list' },

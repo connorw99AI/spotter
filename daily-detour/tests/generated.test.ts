@@ -6,7 +6,7 @@ import { buildTown } from '../src/core/town';
 import { validatePuzzle } from '../src/core/validate';
 import { BOOK_IDS, CHAPTERS, getPuzzle, nextInBook, puzzleLabel } from '../src/data/catalog';
 import { decodePuzzle, encodePuzzle } from '../src/data/codec';
-import { DAILY_CODES } from '../src/data/generated';
+import { DAILY_CODES } from '../src/data/dailies';
 import { PUZZLES } from '../src/data/puzzles';
 import { dailyPace, dailyPuzzleId, lastFreshDaily } from '../src/game/daily';
 
@@ -72,6 +72,16 @@ describe('generated content', () => {
       };
       const out = reach(t.depot, false), back = reach(t.depot, true);
       expect(t.nodeIds.every((n) => out.has(n) && back.has(n)), id).toBe(true);
+    }
+  });
+
+  it('every garden gate is a shortcut the gold route actually takes', () => {
+    for (const id of generatedIds) {
+      const p = getPuzzle(id)!;
+      if (!p.edges.some((e) => e.gate)) continue;
+      const route = solvePuzzle(buildTown(p))!.route;
+      const used = route.some((n, i) => i > 0 && p.edges.some((e) => e.gate && ((e.a === n && e.b === route[i - 1]) || (e.b === n && e.a === route[i - 1]))));
+      expect(used, id).toBe(true);
     }
   });
 

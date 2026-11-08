@@ -209,6 +209,10 @@ function defs(t: Theme, big: Box, box: Box): string {
     <pattern id="m-paving" width="20" height="20" patternUnits="userSpaceOnUse">
       <rect width="20" height="20" fill="${t.paving}"/><path d="M0 .5H20M.5 0V20M10 10H20" stroke="${t.pavingLine}" stroke-width="1"/>
     </pattern>
+    <pattern id="m-cobbles" width="12" height="10" patternUnits="userSpaceOnUse">
+      <rect width="12" height="10" fill="#B8A88A"/><rect x=".8" y=".8" width="6.4" height="3.6" rx="1.6" fill="#E3D6BA"/><rect x="7.6" y=".8" width="3.6" height="3.6" rx="1.4" fill="#D6C7A8"/>
+      <rect x="-2.4" y="5.6" width="5.6" height="3.6" rx="1.4" fill="#D6C7A8"/><rect x="3.8" y="5.6" width="7.2" height="3.6" rx="1.6" fill="#E3D6BA"/>
+    </pattern>
     <pattern id="hatch" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
       <rect width="14" height="14" fill="#E7DDC8"/><rect width="6" height="14" fill="#D9CCB2"/>
     </pattern>
@@ -358,9 +362,9 @@ function streetsSvg(town: Town): string {
       marks += `<path d="${d}" stroke="#C9A877" stroke-width="${sw}" stroke-dasharray="3 9" stroke-linecap="butt"/>`;
     } else {
       kerb += `<path d="${d}" stroke="${C.kerb}" stroke-width="${kw}"/>`;
-      surf += `<path d="${d}" stroke="${e.closed ? 'url(#hatch)' : C.road}" stroke-width="${sw}"/>`;
-      if (!e.closed) surf += `<path d="${d}" stroke="#FFFDF6" stroke-opacity=".55" stroke-width="${Math.round(sw * 0.35)}" transform="translate(-2 -2)"/>`;
-      if (e.style !== 'lane' && !e.closed && !e.oneWay) {
+      surf += `<path d="${d}" stroke="${e.closed ? 'url(#hatch)' : e.cobbles ? 'url(#m-cobbles)' : C.road}" stroke-width="${sw}"/>`;
+      if (!e.closed && !e.cobbles) surf += `<path d="${d}" stroke="#FFFDF6" stroke-opacity=".55" stroke-width="${Math.round(sw * 0.35)}" transform="translate(-2 -2)"/>`;
+      if (e.style !== 'lane' && !e.closed && !e.oneWay && !e.cobbles) {
         marks += `<path d="${d}" stroke="#E4D6B6" stroke-width="2.4" stroke-dasharray="10 14" stroke-dashoffset="-6"/>`;
       }
     }
@@ -416,7 +420,7 @@ export function miniMapSvg(town: Town, theme: Theme): string {
     s += `<polyline points="${w.points.map(([x, y]) => `${x * U},${y * U}`).join(' ')}" fill="none" stroke="${theme.water}" stroke-width="${w.width * U}" stroke-linecap="round" stroke-linejoin="round"/>`;
   }
   let roads = '';
-  town.edges.forEach((e, i) => { roads += `<path d="${edgeD(town, i)}" stroke="${e.closed ? '#D9A08A' : C.road}" stroke-width="${e.style === 'lane' ? 22 : 30}" fill="none" stroke-linecap="round"/>`; });
+  town.edges.forEach((e, i) => { roads += `<path d="${edgeD(town, i)}" stroke="${e.closed ? '#D9A08A' : e.cobbles ? '#CDBE9C' : C.road}" stroke-width="${e.style === 'lane' ? 22 : 30}" fill="none" stroke-linecap="round"/>`; });
   s += `<g>${roads}</g>`;
   const dot = (id: string, fill: string, stroke: string) => { const p = nodePt(town, id); return `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="21" fill="${fill}" stroke="${stroke}" stroke-width="7"/>`; };
   s += dot(town.depot, C.forest, '#FFFAF0');

@@ -6,23 +6,16 @@
  *   npx vite-node scripts/curate.ts <pool-dir>
  */
 declare const process: { argv: string[] };
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { simulate } from '../src/core/rules';
 import { buildTown } from '../src/core/town';
-import type { PuzzleDef, ShopKind } from '../src/core/types';
+import type { ShopKind } from '../src/core/types';
 import { encodePuzzle } from '../src/data/codec';
 import { PUZZLES } from '../src/data/puzzles';
+import { DAILY_CODES } from '../src/data/dailies';
 import type { Band, Candidate, Family } from './generate';
 
 const dir = process.argv[2];
-const pool: Candidate[] = [];
-for (const f of readdirSync(dir)) if (f.startsWith('pool-') && f.endsWith('.jsonl')) {
-  for (const line of readFileSync(`${dir}/${f}`, 'utf8').split('\n')) if (line.trim()) pool.push(JSON.parse(line));
-}
-// Drop exact repeats.
-const seen = new Set<string>();
-const uniq = pool.filter((c) => { const k = encodePuzzle({ ...c.def, title: '', brief: '', hint: '' }); if (seen.has(k)) return false; seen.add(k); return true; });
-
 let s = 977;
 const rnd = () => ((s = (s * 1103515245 + 12345) >>> 0) / 2 ** 32);
 
@@ -37,7 +30,7 @@ const LAST_BY_FAMILY: Record<Family, string[]> = {
   comb: ['Street', 'Way', 'Walk', 'Rise', 'End', 'Hill', 'Close', 'Row'],
 };
 void LAST;
-const usedTitles = new Set(PUZZLES.map((p) => p.title));
+const usedTitles = new Set([...PUZZLES.map((p) => p.title), ...DAILY_CODES.map((c) => c.split('|')[0])]);
 function title(family: Family): string {
   for (let k = 0; k < 10_000; k++) {
     const t = `${FIRST[Math.floor(rnd() * FIRST.length)]} ${LAST_BY_FAMILY[family][Math.floor(rnd() * LAST_BY_FAMILY[family].length)]}`;
@@ -49,6 +42,7 @@ function title(family: Family): string {
 // ───────────────────────── words ─────────────────────────
 const NUM = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six'];
 const ITEM: Record<ShopKind, string> = { bakery: 'bread', florist: 'tulips', icecream: 'ice cream', grocer: 'veg box' };
+const FRAGILE: Record<ShopKind, string> = { bakery: 'wedding cake', florist: 'vase of lilies', icecream: 'ice-cream cake', grocer: 'eggs' };
 const SHOP: Record<ShopKind, string> = { bakery: 'Bakery', florist: 'Florist', icecream: 'ice-cream parlour', grocer: 'Grocer' };
 const PLACE: Record<Family, string[]> = {
   grid: ['across the market town', 'around the square', 'through the terraces'],
@@ -69,6 +63,11 @@ function brief(c: Candidate): string {
     parts.push(k === 'icecream' ? `ice cream that melts in ${o.fresh}` : `tulips that wilt in ${o.fresh}`);
   }
   if (d.capacity) parts.push('a basket for two');
+  const timed = d.shops.find((sh) => sh.opensAt);
+  if (timed) parts.unshift(`the ${SHOP[timed.kind]} opening at move ${timed.opensAt}`);
+  if (d.edges.some((e) => e.gate)) parts.unshift('a garden gate');
+  const fr = d.orders.find((o) => o.fragile);
+  if (fr) parts.unshift(`cobbles and a fragile ${FRAGILE[d.shops.find((sh) => sh.node === fr.from)!.kind]}`);
   const place = PLACE[c.family][Math.floor(rnd() * PLACE[c.family].length)];
   const shared = new Set(d.orders.map((o) => o.from)).size < n;
   let head = `${NUM[n]} orders ${place}`;
@@ -96,6 +95,12 @@ function hint(c: Candidate): string {
     notes.push({ p: 9, t: `The ${ITEM[k]} lasts ${o.fresh} ${o.fresh === 1 ? 'move' : 'moves'}, and House ${letter(o.to)} is ${dist} from the ${SHOP[k]}. Fetch it late, with nothing to stop for on the way.` });
     break;
   }
+  const timed = d.shops.find((sh) => sh.opensAt);
+  if (rel.hours && timed) notes.push({ p: 11, t: `The ${SHOP[timed.kind]} doesn't open until move ${timed.opensAt}. Do something useful on the way instead of waiting outside.` });
+  const gate = d.edges.find((e) => e.gate);
+  if (rel.gates && gate) notes.push({ p: 11, t: `House ${letter(gate.gate!)} opens their garden gate once they have their delivery. Get to them early and the shortcut is yours.` });
+  const fr = d.orders.find((o) => o.fragile);
+  if (rel.fragile && fr) notes.push({ p: 11, t: `The ${FRAGILE[d.shops.find((sh) => sh.node === fr.from)!.kind]} can't go over cobbles. Plan a smooth way from the ${SHOP[d.shops.find((sh) => sh.node === fr.from)!.kind]} to House ${letter(fr.to)} before you collect it.` });
   if (rel.oneways && rel.oneways[0] !== c.opt) notes.push({ p: 8, t: 'Check the arrows first: the one-way streets decide which way round the town to go.' });
   if (rel.closures && rel.closures[0] !== c.opt) notes.push({ p: 7, t: 'The roadworks block the obvious way; look for the loop around them.' });
   // Last delivery close to home?
@@ -118,74 +123,43 @@ function shortest(town: ReturnType<typeof buildTown>, a: string, b: string): str
 }
 
 // ───────────────────────── selection ─────────────────────────
-const byKey = new Map<string, Candidate[]>();
-for (const c of uniq) {
-  const k = `${c.family}/${c.band}`;
-  if (!byKey.has(k)) byKey.set(k, []);
-  byKey.get(k)!.push(c);
-}
-for (const list of byKey.values()) list.sort((a, b) => b.score - a.score);
-const take = (family: Family, band: Band, n: number): Candidate[] => {
-  const list = byKey.get(`${family}/${band}`) ?? [];
-  if (list.length < n) throw new Error(`not enough ${family}/${band}: ${list.length} < ${n}`);
-  return list.splice(0, n);
-};
-
-const PACKS: { id: string; title: string; blurb: string; family: Family }[] = [
-  { id: 'market-town', title: 'Market Town', blurb: 'Tidy terraces, a park or two, and garden lanes cutting corners.', family: 'grid' },
-  { id: 'riverside', title: 'Riverside', blurb: 'Two banks and not many bridges. Choose your crossing.', family: 'river' },
-  { id: 'round-the-green', title: 'Round the Green', blurb: 'Ring roads, paths across the common, and lanes leading out of town.', family: 'ring' },
-  { id: 'old-quarter', title: 'Old Quarter', blurb: 'Crooked lanes meeting at odd angles. Count carefully.', family: 'tri' },
-  { id: 'high-street', title: 'High Street', blurb: 'One main street, quiet closes, and the odd back lane.', family: 'comb' },
+const PACKS: { id: string; title: string; blurb: string; family: Family; featured: string }[] = [
+  { id: 'market-town', title: 'Market Town', blurb: 'New: opening hours. Some shops only serve from a set move.', family: 'grid', featured: 'hours' },
+  { id: 'round-the-green', title: 'Round the Green', blurb: 'New: garden gates. Neighbours open shortcuts once they have their delivery.', family: 'ring', featured: 'gate' },
+  { id: 'old-quarter', title: 'Old Quarter', blurb: 'New: cobbles. Fragile orders need the smooth way round.', family: 'tri', featured: 'fragile' },
+  { id: 'riverside', title: 'Riverside', blurb: 'Every rule so far, on both banks of the river.', family: 'river', featured: 'mix' },
+  { id: 'high-street', title: 'High Street', blurb: 'Every rule so far, along the busiest street in town.', family: 'comb', featured: 'mix' },
 ];
-const PER_PACK: Record<Band, number> = { easy: 8, medium: 9, hard: 7 };
 
-const packOut: { id: string; title: string; blurb: string; codes: string[] }[] = [];
+type Tagged = Candidate & { intro?: boolean };
+const chapterPool = (id: string): Tagged[] => {
+  const out: Tagged[] = [];
+  for (const line of readFileSync(`${dir}/pool-${id}.jsonl`, 'utf8').split('\n')) if (line.trim()) out.push(JSON.parse(line));
+  const keys = new Set<string>();
+  return out.filter((c) => { const k = encodePuzzle({ ...c.def, title: '', brief: '', hint: '' }); if (keys.has(k)) return false; keys.add(k); return true; });
+};
+const best = (list: Tagged[], band: Band | 'intro', n: number) =>
+  list.filter((c) => (band === 'intro' ? c.intro : !c.intro && c.band === band)).sort((a, b) => b.score - a.score).slice(0, n);
+
+const packOut: { id: string; title: string; blurb: string; featured: string; codes: string[] }[] = [];
 for (const pack of PACKS) {
-  const chosen = [...take(pack.family, 'easy', PER_PACK.easy), ...take(pack.family, 'medium', PER_PACK.medium), ...take(pack.family, 'hard', PER_PACK.hard)];
-  chosen.sort((a, b) => a.difficulty - b.difficulty);
+  const list = chapterPool(pack.id);
+  const intro = best(list, 'intro', 1);
+  const rest = [...best(list, 'easy', intro.length ? 7 : 8), ...best(list, 'medium', 9), ...best(list, 'hard', 7)].sort((a, b) => a.difficulty - b.difficulty);
+  const chosen = [...intro, ...rest];
+  if (chosen.length !== 24) throw new Error(`${pack.id}: only ${chosen.length} puzzles`);
   packOut.push({
-    id: pack.id, title: pack.title, blurb: pack.blurb,
+    id: pack.id, title: pack.title, blurb: pack.blurb, featured: pack.featured,
     codes: chosen.map((c) => encodePuzzle({ ...c.def, title: title(c.family), brief: brief(c), hint: hint(c) })),
   });
 }
 
-// Dailies: a week-shaped rhythm, gentle on Monday and trickiest at the weekend.
-// Index 0 is Monday 9 November 2026.
-const WEEK: Band[] = ['easy', 'easy', 'medium', 'medium', 'medium', 'hard', 'hard'];
-const FAMILIES: Family[] = ['grid', 'river', 'ring', 'tri', 'comb'];
-const cursor: Record<Band, number> = { easy: 0, medium: 0, hard: 0 };
-const dailyCodes: string[] = [];
-const dailyBands: string[] = [];
-for (let day = 0; day < 365; day++) {
-  const band = WEEK[day % 7];
-  let c: Candidate | undefined;
-  for (let tries = 0; tries < FAMILIES.length && !c; tries++) {
-    const fam = FAMILIES[(cursor[band]++) % FAMILIES.length];
-    const list = byKey.get(`${fam}/${band}`) ?? [];
-    c = list.shift();
-  }
-  if (!c) throw new Error(`ran out of ${band} dailies on day ${day}`);
-  dailyCodes.push(encodePuzzle({ ...c.def, title: title(c.family), brief: brief(c), hint: hint(c) }));
-  dailyBands.push(band[0]);
-}
-
-const header = `// Generated by scripts/curate.ts from solver-checked generator output. Do not edit by hand.\n// ${packOut.reduce((a, p) => a + p.codes.length, 0)} route-book puzzles in ${packOut.length} chapters, ${dailyCodes.length} daily puzzles.\n`;
+const header = `// Generated by scripts/curate.ts from solver-checked generator output. Do not edit by hand.\n// ${packOut.reduce((a, p) => a + p.codes.length, 0)} route-book puzzles in ${packOut.length} chapters; each chapter is built around one rule.\n`;
 const body = `${header}
-export interface PackData { id: string; title: string; blurb: string; codes: string[] }
+export interface PackData { id: string; title: string; blurb: string; featured: string; codes: string[] }
 
 export const GENERATED_PACKS: PackData[] = ${JSON.stringify(packOut, null, 1)};
-
-/** Daily puzzles from Monday 9 November 2026 (index 0), one per UTC day. */
-export const DAILY_START = '2026-11-09';
-export const DAILY_CODES: string[] = ${JSON.stringify(dailyCodes, null, 0).replace(/","/g, '",\n"')};
-/** e / m / h per daily: the weekday rhythm the schedule follows. */
-export const DAILY_BANDS = '${dailyBands.join('')}';
 `;
 writeFileSync('src/data/generated.ts', body);
-console.log(`packs: ${packOut.map((p) => `${p.title} ${p.codes.length}`).join(', ')}; dailies: ${dailyCodes.length}; file ${(body.length / 1024).toFixed(0)} KB`);
-const remaining = [...byKey.entries()].map(([k, v]) => `${k}:${v.length}`).join(' ');
-console.log('left in pool:', remaining);
-// Sample of generated words for review.
-console.log('sample:', packOut[1].codes.slice(0, 3).map((c) => c.split('|').slice(0, 3).join(' / ')).join('\n        '));
-void (null as unknown as PuzzleDef);
+console.log(`packs: ${packOut.map((p) => `${p.title} ${p.codes.length}`).join(', ')}; file ${(body.length / 1024).toFixed(0)} KB`);
+for (const p of packOut) console.log(' ', p.title, '→', p.codes[0].split('|').slice(0, 3).join(' / '));

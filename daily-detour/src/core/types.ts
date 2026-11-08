@@ -9,7 +9,7 @@ export type ShopKind = 'bakery' | 'florist' | 'icecream' | 'grocer';
 export type Tier = 'tutorial' | 'approachable' | 'intermediate' | 'challenging';
 
 /** Mechanics a puzzle uses; drives contextual teaching and design checks. */
-export type Mechanic = 'basic' | 'multi' | 'closure' | 'fresh' | 'oneway' | 'capacity';
+export type Mechanic = 'basic' | 'multi' | 'closure' | 'fresh' | 'oneway' | 'capacity' | 'hours' | 'gate' | 'fragile';
 
 export interface NodeDef {
   id: NodeId;
@@ -28,11 +28,17 @@ export interface EdgeDef {
   bend?: [number, number];
   /** Presentation-only style. */
   style?: 'street' | 'lane' | 'bridge';
+  /** Garden gate: closed until every order for this house node has been delivered. */
+  gate?: NodeId;
+  /** Cobbled: fragile orders cannot be carried along it. */
+  cobbles?: boolean;
 }
 
 export interface ShopDef {
   node: NodeId;
   kind: ShopKind;
+  /** Opening hours: the shop hands over orders only from this move onwards. */
+  opensAt?: number;
 }
 
 export interface HouseDef {
@@ -48,6 +54,8 @@ export interface OrderDef {
   to: NodeId;
   /** Freshness limit: must be delivered within this many moves after pickup. */
   fresh?: number;
+  /** Fragile: may not be carried along cobbled streets. */
+  fragile?: boolean;
 }
 
 export interface TipDef {

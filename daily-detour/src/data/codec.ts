@@ -4,9 +4,10 @@ import type { EdgeDef, PuzzleDef, ShopKind, Tier } from '../core/types';
  * Compact text form for generated puzzles, about a tenth the size of the
  * equivalent JSON. Fields are separated by '|', items by ';'.
  *   title | brief | hint | gold | capacity | nodes | edges | depot | shops | houses | orders | water
- * Nodes are "x,y"; edges "a.b.flags[@bx,by]" with flags o(one-way a→b) c(closed) l(lane) b(bridge);
- * shops "i:k" with k in b f i g; houses are node indices lettered A, B, C… in order;
- * orders "shop.house[.fresh]"; water "x,y x,y…@width". Indices are base 36.
+ * Nodes are "x,y"; edges "a.b.flags[!gate][@bx,by]" with flags o(one-way a→b) c(closed) l(lane)
+ * b(bridge) k(cobbles), gate = the house node that opens it; shops "i:k[@opensAt]" with k in b f i g;
+ * houses are node indices lettered A, B, C… in order; orders "shop.house[.fresh][!]" where ! is
+ * fragile; water "x,y x,y…@width". Indices are base 36.
  */
 const KIND: Record<string, ShopKind> = { b: 'bakery', f: 'florist', i: 'icecream', g: 'grocer' };
 const KIND_CODE: Record<ShopKind, string> = { bakery: 'b', florist: 'f', icecream: 'i', grocer: 'g' };
@@ -18,17 +19,17 @@ export function encodePuzzle(def: PuzzleDef): string {
   const idx = new Map(def.nodes.map((n, i) => [n.id, i]));
   const I = (id: string) => n36(idx.get(id)!);
   const edges = def.edges.map((e) => {
-    const flags = (e.oneWay ? 'o' : '') + (e.closed ? 'c' : '') + (e.style === 'lane' ? 'l' : e.style === 'bridge' ? 'b' : '');
-    return `${I(e.a)}.${I(e.b)}.${flags}${e.bend ? `@${num(e.bend[0])},${num(e.bend[1])}` : ''}`;
+    const flags = (e.oneWay ? 'o' : '') + (e.closed ? 'c' : '') + (e.style === 'lane' ? 'l' : e.style === 'bridge' ? 'b' : '') + (e.cobbles ? 'k' : '');
+    return `${I(e.a)}.${I(e.b)}.${flags}${e.gate ? `!${I(e.gate)}` : ''}${e.bend ? `@${num(e.bend[0])},${num(e.bend[1])}` : ''}`;
   });
   const fields = [
     def.title, def.brief, def.hint, String(def.gold), def.capacity ? String(def.capacity) : '',
     def.nodes.map((n) => `${num(n.x)},${num(n.y)}`).join(';'),
     edges.join(';'),
     I(def.depot),
-    def.shops.map((s) => `${I(s.node)}:${KIND_CODE[s.kind]}`).join(';'),
+    def.shops.map((s) => `${I(s.node)}:${KIND_CODE[s.kind]}${s.opensAt ? `@${s.opensAt}` : ''}`).join(';'),
     def.houses.map((h) => I(h.node)).join(';'),
-    def.orders.map((o) => `${I(o.from)}.${I(o.to)}${o.fresh ? `.${o.fresh}` : ''}`).join(';'),
+    def.orders.map((o) => `${I(o.from)}.${I(o.to)}${o.fresh ? `.${o.fresh}` : ''}${o.fragile ? '!' : ''}`).join(';'),
     (def.water ?? []).map((w) => `${w.points.map(([x, y]) => `${num(x)},${num(y)}`).join(' ')}@${num(w.width)}`).join(';'),
   ];
   for (const f of fields) if (f.includes('|')) throw new Error('field contains a separator');
@@ -50,8 +51,11 @@ export function decodePuzzle(code: string, meta: DecodeMeta): PuzzleDef {
   const nodes = nodesF.split(';').map((xy, i) => { const [x, y] = xy.split(',').map(Number); return { id: `n${i}`, x, y }; });
   const edges: EdgeDef[] = edgesF.split(';').map((t) => {
     const [main, bend] = t.split('@');
-    const [a, b, flags = ''] = main.split('.');
+    const [abf, gate] = main.split('!');
+    const [a, b, flags = ''] = abf.split('.');
     const e: EdgeDef = { a: id(a), b: id(b) };
+    if (flags.includes('k')) e.cobbles = true;
+    if (gate) e.gate = id(gate);
     if (flags.includes('o')) e.oneWay = true;
     if (flags.includes('c')) e.closed = true;
     if (flags.includes('l')) e.style = 'lane';
@@ -59,12 +63,20 @@ export function decodePuzzle(code: string, meta: DecodeMeta): PuzzleDef {
     if (bend) { const [x, y] = bend.split(',').map(Number); e.bend = [x, y]; }
     return e;
   });
-  const shops = shopsF.split(';').map((t) => { const [i, k] = t.split(':'); return { node: id(i), kind: KIND[k] }; });
+  const shops = shopsF.split(';').map((t) => {
+    const [i, rest] = t.split(':');
+    const [k, opens] = rest.split('@');
+    const s: PuzzleDef['shops'][number] = { node: id(i), kind: KIND[k] };
+    if (opens) s.opensAt = Number(opens);
+    return s;
+  });
   const houses = housesF.split(';').map((i, k) => ({ node: id(i), letter: String.fromCharCode(65 + k) }));
   const orders = ordersF.split(';').map((t, k) => {
-    const [s, h, fr] = t.split('.');
+    const fragile = t.endsWith('!');
+    const [s, h, fr] = (fragile ? t.slice(0, -1) : t).split('.');
     const o: PuzzleDef['orders'][number] = { id: `o${k + 1}`, from: id(s), to: id(h) };
     if (fr) o.fresh = Number(fr);
+    if (fragile) o.fragile = true;
     return o;
   });
   const mechanics: PuzzleDef['mechanics'] = [orders.length > 1 ? 'multi' : 'basic'];
@@ -72,6 +84,9 @@ export function decodePuzzle(code: string, meta: DecodeMeta): PuzzleDef {
   if (orders.some((o) => o.fresh !== undefined)) mechanics.push('fresh');
   if (edges.some((e) => e.oneWay)) mechanics.push('oneway');
   if (cap) mechanics.push('capacity');
+  if (shops.some((s) => s.opensAt)) mechanics.push('hours');
+  if (edges.some((e) => e.gate)) mechanics.push('gate');
+  if (orders.some((o) => o.fragile) && edges.some((e) => e.cobbles)) mechanics.push('fragile');
   const def: PuzzleDef = {
     id: meta.id, rev: 1, number: meta.number, title, brief, hint, tier: meta.tier, mechanics,
     nodes, edges, depot: id(depotF), shops, houses, orders, gold: Number(gold),

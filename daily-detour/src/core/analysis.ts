@@ -72,11 +72,14 @@ function shortestPath(town: Town, a: NodeId, b: NodeId): NodeId[] | null {
   return null;
 }
 
-export type Relaxation = 'closures' | 'oneways' | 'freshness' | 'capacity';
+export type Relaxation = 'closures' | 'oneways' | 'freshness' | 'capacity' | 'hours' | 'gates' | 'fragile';
 
 /** Same puzzle with one kind of constraint removed — shows whether that rule shapes the answer. */
 export function relaxed(def: PuzzleDef, what: Relaxation): PuzzleDef {
-  const copy: PuzzleDef = { ...def, edges: def.edges.map((e) => ({ ...e })), orders: def.orders.map((o) => ({ ...o })) };
+  const copy: PuzzleDef = { ...def, edges: def.edges.map((e) => ({ ...e })), orders: def.orders.map((o) => ({ ...o })), shops: def.shops.map((s) => ({ ...s })) };
+  if (what === 'hours') copy.shops.forEach((s) => delete s.opensAt);
+  if (what === 'gates') copy.edges.forEach((e) => delete e.gate);
+  if (what === 'fragile') copy.orders.forEach((o) => delete o.fragile);
   if (what === 'closures') copy.edges.forEach((e) => delete e.closed);
   if (what === 'oneways') copy.edges.forEach((e) => delete e.oneWay);
   if (what === 'freshness') copy.orders.forEach((o) => delete o.fresh);
@@ -106,6 +109,9 @@ export function analyse(def: PuzzleDef): PuzzleReport {
     oneways: def.edges.some((e) => e.oneWay),
     freshness: def.orders.some((o) => o.fresh !== undefined),
     capacity: def.capacity !== undefined,
+    hours: def.shops.some((s) => s.opensAt !== undefined),
+    gates: def.edges.some((e) => e.gate !== undefined),
+    fragile: def.orders.some((o) => o.fragile) && def.edges.some((e) => e.cobbles),
   };
   for (const what of Object.keys(uses) as Relaxation[]) {
     if (!uses[what]) continue;

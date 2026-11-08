@@ -1,5 +1,5 @@
 import type { PuzzleDef } from '../core/types';
-import { DAILY_BANDS, DAILY_CODES, DAILY_START } from '../data/generated';
+import { DAILY_BANDS, DAILY_CODES, DAILY_START } from '../data/dailies';
 
 /** Daily #1 was 1 January 2026 (UTC). */
 export const DAILY_EPOCH_MS = Date.UTC(2026, 0, 1);

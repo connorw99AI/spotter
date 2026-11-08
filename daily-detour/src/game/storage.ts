@@ -12,6 +12,8 @@ export interface LevelRecord {
   bestMedal: Medal;
   /** Best result reached without any hints, if any. */
   bestCleanMoves?: number;
+  /** The route behind the best result, shown as a ghost on replays. */
+  bestRoute?: string[];
 }
 
 export interface DailyRecord {
@@ -65,6 +67,7 @@ function cleanLevel(v: unknown): LevelRecord | null {
   if (!isObj(v) || !isCount(v.rev) || !isCount(v.completions) || !isCount(v.bestMoves) || !MEDALS.includes(v.bestMedal as string)) return null;
   const r: LevelRecord = { rev: v.rev, completions: v.completions, bestMoves: v.bestMoves, bestMedal: v.bestMedal as Medal };
   if (isCount(v.bestCleanMoves)) r.bestCleanMoves = v.bestCleanMoves;
+  if (Array.isArray(v.bestRoute) && v.bestRoute.length <= 300 && v.bestRoute.every((n) => typeof n === 'string' && n.length <= 12)) r.bestRoute = v.bestRoute as string[];
   return r;
 }
 
@@ -170,7 +173,7 @@ export class SaveStore {
   }
 
   /** Records a completion; returns whether it improved the personal best. */
-  recordCompletion(puzzleId: string, rev: number, moves: number, medal: Medal, hints: number): { newBest: boolean; previousBest?: number } {
+  recordCompletion(puzzleId: string, rev: number, moves: number, medal: Medal, hints: number, route?: readonly string[]): { newBest: boolean; previousBest?: number } {
     const prev = this.levelRecord(puzzleId, rev);
     const rank = { gold: 3, silver: 2, bronze: 1 } as const;
     const next: LevelRecord = prev
@@ -178,6 +181,7 @@ export class SaveStore {
       : { rev, completions: 1, bestMoves: moves, bestMedal: medal };
     const newBest = !prev || moves < prev.bestMoves;
     if (newBest) next.bestMoves = moves;
+    if ((newBest || !next.bestRoute) && route) next.bestRoute = [...route];
     if (!prev || rank[medal] > rank[prev.bestMedal]) next.bestMedal = medal;
     if (hints === 0 && (next.bestCleanMoves === undefined || moves < next.bestCleanMoves)) next.bestCleanMoves = moves;
     this.data.levels[puzzleId] = next;

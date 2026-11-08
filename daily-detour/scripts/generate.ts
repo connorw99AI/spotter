@@ -17,6 +17,8 @@ import { validatePuzzle } from '../src/core/validate';
 
 export type Family = 'grid' | 'river' | 'ring' | 'tri' | 'comb';
 export type Band = 'easy' | 'medium' | 'hard';
+/** New rules a chapter can be built around ('mix' picks one per puzzle). */
+export type Featured = 'hours' | 'gate' | 'fragile' | 'mix' | 'none';
 
 type XY = [number, number];
 interface Layout {
@@ -255,7 +257,7 @@ export interface Candidate {
   route: string[];
 }
 
-function attempt(r: R, family: Family, band: Band): Candidate | null {
+function attempt(r: R, family: Family, band: Band, featured: Featured = 'none', intro = false): Candidate | null {
   const B = BANDS[band];
   const l = LAYOUTS[family](r);
   if (l.nodes.length < 6) return null;
@@ -275,7 +277,9 @@ function attempt(r: R, family: Family, band: Band): Candidate | null {
   const nOrders = int(r, B.orders[0], B.orders[1]);
   const nMech = int(r, B.mech[0], B.mech[1]);
   const pool: Mechanic[] = nOrders >= 3 ? ['closure', 'fresh', 'oneway', 'capacity'] : ['closure', 'fresh', 'oneway'];
-  const mechs = shuffle(r, pool.slice()).slice(0, nMech);
+  const star: Mechanic | null = featured === 'none' ? null : featured === 'mix' ? pick(r, ['hours', 'gate', 'fragile'] as Mechanic[]) : featured;
+  // A chapter's own rule is always in play; an intro puzzle has nothing else.
+  const mechs = intro && star ? [star] : star ? [star, ...shuffle(r, pool.slice()).slice(0, Math.max(0, nMech - 1))] : shuffle(r, pool.slice()).slice(0, nMech);
   const shareShop = nOrders >= 3 && r() < 0.3;
   const nShops = shareShop ? nOrders - 1 : nOrders;
   const free = shuffle(r, [...l.nodes.keys()].filter((i) => i !== depotIdx));
@@ -310,6 +314,39 @@ function attempt(r: R, family: Family, band: Band): Candidate | null {
   if (mechs.includes('closure') && !tryMark(int(r, 1, band === 'hard' ? 3 : 2), (e) => { e.closed = true; }, (e) => { delete e.closed; })) return null;
   if (mechs.includes('oneway') && !tryMark(int(r, 2, 5), (e) => { e.oneWay = true; if (r() < 0.5) { const t = e.a; e.a = e.b; e.b = t; if (e.bend) { /* bend is symmetric */ } } }, (e) => { delete e.oneWay; })) return null;
   if (!stronglyConnected(def)) return null;
+  // Garden gates: lanes that open once a house has its delivery. The town must work without them.
+  if (mechs.includes('gate')) {
+    const houses = def.houses.map((h) => h.node);
+    const want = band === 'hard' ? int(r, 1, 2) : 1;
+    let placed = 0;
+    for (const e of shuffle(r, def.edges.slice())) {
+      if (placed >= want) break;
+      if (e.closed || e.oneWay || e.style === 'bridge') continue;
+      const house = pick(r, houses.filter((hh) => hh !== e.a && hh !== e.b));
+      if (!house) continue;
+      e.closed = true;
+      const ok = stronglyConnected(def);
+      delete e.closed;
+      if (ok) { e.gate = house; placed++; }
+    }
+    if (placed < want) return null;
+  }
+  // Opening hours: a shop that serves only from a set move.
+  if (mechs.includes('hours')) {
+    for (const sh of shuffle(r, def.shops.slice()).slice(0, band === 'hard' && def.shops.length > 2 ? 2 : 1)) {
+      const d = legalDist(def, def.depot, sh.node);
+      if (!Number.isFinite(d)) return null;
+      sh.opensAt = d + int(r, 2, 6);
+    }
+  }
+  // Cobbles and fragile orders: not ice cream, not fresh.
+  if (mechs.includes('fragile')) {
+    const candidates = def.orders.filter((o, k) => k >= freshCount && def.shops.find((sh) => sh.node === o.from)!.kind !== 'icecream');
+    if (!candidates.length) return null;
+    for (const o of shuffle(r, candidates).slice(0, band === 'hard' ? int(r, 1, 2) : 1)) o.fragile = true;
+    const cob = int(r, 2, band === 'easy' ? 3 : 5);
+    for (const e of shuffle(r, def.edges.filter((x) => x.style !== 'bridge' && !x.closed)).slice(0, cob)) e.cobbles = true;
+  }
   for (let k = 0; k < freshCount; k++) {
     const o = def.orders[k];
     const d = legalDist(def, o.from, o.to);
@@ -318,7 +355,7 @@ function attempt(r: R, family: Family, band: Band): Candidate | null {
   }
   const errs = validatePuzzle({ ...def, gold: 1 }).filter((e) => !e.startsWith('gold'));
   if (errs.length) return null;
-  const final: PuzzleDef = { ...def, edges: def.edges.map((e) => ({ ...e })), orders: def.orders.map((o) => ({ ...o })) };
+  const final: PuzzleDef = { ...def, edges: def.edges.map((e) => ({ ...e })), orders: def.orders.map((o) => ({ ...o })), shops: def.shops.map((x) => ({ ...x })) };
   const t0 = Date.now();
   const sol = solvePuzzle(buildTown(final));
   if (!sol || sol.moves < B.opt[0] || sol.moves > B.opt[1] || Date.now() - t0 > 150) return null;
@@ -335,6 +372,11 @@ function attempt(r: R, family: Family, band: Band): Candidate | null {
     if (v !== null && v !== rep.optimal) { binds++; bindGap += Math.min(4, Math.abs(rep.optimal - v)); }
   }
   if (band === 'hard' && binds < 2) return null;
+  // A garden gate should be a shortcut the best route actually takes, not just a roadblock.
+  if (final.edges.some((e) => e.gate)) {
+    const usesGate = rep.route!.some((n, i) => i > 0 && final.edges.some((e) => e.gate && ((e.a === n && e.b === rep.route![i - 1]) || (e.b === n && e.a === rep.route![i - 1]))));
+    if (!usesGate) return null;
+  }
   const walked = new Set<string>();
   let reuse = 0;
   rep.route!.forEach((n, i) => { if (!i) return; const k = [rep.route![i - 1], n].sort().join('|'); if (walked.has(k)) reuse++; walked.add(k); });
@@ -347,7 +389,10 @@ function attempt(r: R, family: Family, band: Band): Candidate | null {
 }
 
 // CLI
-const [family, band, seedArg, countArg, out] = process.argv.slice(2) as [Family, Band, string, string, string];
+const [family, bandArg, seedArg, countArg, out, featuredArg] = process.argv.slice(2) as [Family, Band | 'intro', string, string, string, Featured | undefined];
+const intro = bandArg === 'intro';
+const band: Band = intro ? 'easy' : bandArg;
+const featured: Featured = featuredArg ?? 'none';
 if (family && band && out) {
   const r = rng(Number(seedArg));
   const want = Number(countArg);
@@ -356,10 +401,11 @@ if (family && band && out) {
   while (found < want && tries < want * 4000) {
     tries++;
     let c: Candidate | null = null;
-    try { c = attempt(r, family, band); } catch { c = null; }
+    try { c = attempt(r, family, band, featured, intro); } catch { c = null; }
+    if (c) { (c as Candidate & { featured?: string; intro?: boolean }).featured = featured; if (intro) (c as Candidate & { intro?: boolean }).intro = true; }
     if (!c) continue;
     appendFileSync(out, JSON.stringify(c) + '\n');
     found++;
   }
-  console.log(`${family}/${band}: ${found} in ${tries} tries, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+  console.log(`${family}/${bandArg}/${featured}: ${found} in ${tries} tries, ${((Date.now() - t0) / 1000).toFixed(0)}s`);
 }

@@ -16,6 +16,10 @@ export function stateKey(town: Town, s: GameState): string {
     if (o.status === 1 && town.orders[i].fresh !== undefined) k += '.' + (s.moves - o.pickedAt);
     k += ',';
   }
+  // Opening hours make the clock matter while an order still waits at a shop that isn't open yet.
+  if (town.maxOpen > 0 && s.moves < town.maxOpen && s.orders.some((o, i) => o.status === 0 && town.opensAt.has(town.orders[i].from))) {
+    k += 't' + s.moves;
+  }
   return k;
 }
 

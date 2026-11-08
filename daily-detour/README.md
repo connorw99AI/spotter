@@ -9,7 +9,16 @@ collect orders, deliver them under a few simple rules, and ride home.
   120 more in five route-book chapters, and 365 daily puzzles (a new one each UTC day from
   9 November 2026 to 8 November 2027, gentle on Mondays and trickiest at the weekend).
 - **Rules:** pickup before delivery, roadworks, fresh orders that melt or wilt, one-way
-  streets, and a basket that holds two.
+  streets and a basket that holds two in the classic routes; then each chapter adds one:
+  opening hours (Market Town), garden gates that open once a house has its delivery (Round the
+  Green), and cobbles that fragile orders can't cross (Old Quarter). Riverside and High Street mix
+  everything. The dailies use the classic rules.
+- **Celebrating the detour:** the result names the clever moves in your route (riding past a shop
+  with a full basket, a just-in-time delivery, a garden-gate shortcut, beating nearest-job-first),
+  calls out near-misses, and replays show your best route as a ghost line.
+- **Pip and the town:** you play Pip, the new courier. Residents have portraits and say thank you
+  on the map and on the result; each chapter tells a short story in four letters and leaves a
+  keepsake in the village when finished.
 - **Hints** in three stages, computed from the player's own route, with an explicit undo when
   a route can no longer finish.
 - **Your village:** deliveries earn hearts (bronze 1, silver 2, gold 3) that restore 12 corners
