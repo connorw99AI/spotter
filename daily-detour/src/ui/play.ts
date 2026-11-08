@@ -4,15 +4,19 @@ import { buildTown, streetNeighbours, type Town } from '../core/town';
 import type { NodeId, PuzzleDef, TipDef } from '../core/types';
 import type { Advice } from '../game/advisor';
 import { dailyNumber } from '../game/daily';
+import { puzzleLabel } from '../data/catalog';
 import { RouteEditor, type EditResult } from '../game/editor';
-import { shareResult, shareText } from '../game/share';
-import { showCopyBox } from './copyBox';
+import { openShareSheet } from './shareSheet';
+import { heartCount } from './screens';
+import { residentsFor, thankYouNote } from '../game/residents';
+import { runStats } from '../game/meta';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, clearIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
+import { backIcon, basketIcon, clearIcon, heartIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
 import { h, icon, setKids } from './dom';
 import { MapView } from './mapView';
 import { Ride } from './ride';
-import { themeFor, type Theme } from './theme';
+import { themeFor, themeForEvent, type Theme } from './theme';
+import { eventOn } from '../game/meta';
 import { describeBlock, describeDoom, describeEvents, describeNodeForStep, describeObjective, houseOf, itemName, orderKind, shopName } from './text';
 
 type Tone = 'info' | 'good' | 'warn' | 'tip';
@@ -91,7 +95,7 @@ export class PlayScreen {
     const draft = app.store.draft(this.draftKey, p.id, p.rev);
     this.editor = new RouteEditor(this.town, draft?.route);
     this.hints = draft?.hints ?? 0;
-    this.theme = themeFor(p);
+    this.theme = opts.mode === 'daily' ? themeForEvent(eventOn(opts.dateKey!), p) : themeFor(p);
     this.map = new MapView(this.town, `Map of ${p.title}. Draw a route from your cottage.`, this.theme);
     const startTip = this.tip('start');
     this.message = this.editor.moves > 0
@@ -108,7 +112,7 @@ export class PlayScreen {
 
   private build(): HTMLElement {
     const p = this.opts.puzzle;
-    const label = this.opts.mode === 'daily' ? `Daily #${dailyNumber(this.opts.dateKey!)}` : `Route ${p.number}`;
+    const label = this.opts.mode === 'daily' ? `Daily #${dailyNumber(this.opts.dateKey!)}` : puzzleLabel(p);
     this.hintBtn = h('button', { class: 'btn-icon btn-hint', type: 'button', 'aria-label': 'Hints', onclick: () => this.toggleHints() }, icon(hintIcon, 22), h('span', { class: 'btn-hint-label' }, 'Hint'));
     const top = h('header', { class: 'play-top' },
       h('button', { class: 'btn-icon', type: 'button', 'aria-label': this.opts.mode === 'daily' ? 'Back to town' : 'Back to the route book', onclick: () => this.leave() }, icon(backIcon, 22)),
@@ -418,7 +422,7 @@ export class PlayScreen {
     const key = this.routeKey();
     if (this.lastAdvice?.key === key) return this.lastAdvice.advice;
     const seq = ++this.adviceSeq;
-    const a = await this.app.advisor.request(this.opts.puzzle.id, this.editor.route);
+    const a = await this.app.advisor.request(this.opts.puzzle, this.editor.route);
     if (!this.alive || seq !== this.adviceSeq || key !== this.routeKey() || !a) return null;
     this.lastAdvice = { key, advice: a };
     return a;
@@ -589,6 +593,7 @@ export class PlayScreen {
   private complete(moves: number) {
     const p = this.opts.puzzle;
     const medal = medalFor(moves, this.t);
+    const heartsBefore = heartCount(this.app);
     const res = this.app.store.recordCompletion(p.id, p.rev, moves, medal, this.hints);
     if (this.opts.mode === 'daily') {
       this.app.store.recordDaily(this.opts.dateKey!, { puzzleId: p.id, rev: p.rev, moves, medal, hints: this.hints });
@@ -597,15 +602,21 @@ export class PlayScreen {
     this.deliveredRoute = this.routeKey();
     this.app.sound.play('complete');
     this.app.haptics([20, 60, 30]);
-    this.showDocket(moves, medal, res.newBest, res.previousBest);
+    this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore);
   }
 
-  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest?: number) {
+  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest: number | undefined, heartsGained: number) {
     const p = this.opts.puzzle;
     const rec = this.app.store.levelRecord(p.id, p.rev)!;
     const daily = this.opts.mode === 'daily' ? { number: dailyNumber(this.opts.dateKey!), dateKey: this.opts.dateKey! } : undefined;
-    const text = shareText({ puzzle: p, moves, gold: this.t.gold, medal, hints: this.hints, daily });
+    const run = daily ? runStats(Object.keys(this.app.store.data.daily), daily.dateKey).current : undefined;
     const status = h('p', { class: 'share-status', 'aria-live': 'polite' });
+    // Thank-you notes from the residents who got their orders.
+    const residents = residentsFor(p);
+    const notes = p.orders.slice(0, 2).map((o, i) => {
+      const k = this.town.shopKind.get(o.from)!;
+      return h('li', {}, h('span', { class: 'note-who' }, `${residents.get(o.to)}, House ${this.town.houseLetter.get(o.to)}`), h('span', {}, `“${thankYouNote(p, i, k)}”`));
+    });
     const note = medal === 'gold'
       ? (moves === this.t.gold ? 'The shortest route there is.' : 'Gold!')
       : medal === 'silver'
@@ -619,11 +630,13 @@ export class PlayScreen {
         : h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'book' }) }, 'Back to the route book');
     const best = previousBest === undefined ? 'First delivery' : newBest ? `New best (was ${previousBest})` : `Best ${rec.bestMoves}`;
     const card = h('div', { class: `docket docket-${medal}`, role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'docket-title' },
-      h('p', { class: 'docket-kicker' }, daily ? `Daily #${daily.number} delivered` : `Route ${p.number} delivered`),
+      h('p', { class: 'docket-kicker' }, daily ? `Daily #${daily.number} delivered` : `${puzzleLabel(p)} delivered`),
       h('h2', { id: 'docket-title' }, p.title),
       h('div', { class: `stamp stamp-${medal}`, 'aria-label': `${medalName[medal]} stamp` },
         h('span', { class: 'stamp-medal' }, medalName[medal]), h('span', { class: 'stamp-moves' }, `${moves} moves`)),
       h('p', { class: 'docket-note' }, note),
+      heartsGained > 0 ? h('p', { class: 'docket-hearts' }, icon(heartIcon, 18), `+${heartsGained} ${heartsGained === 1 ? 'heart' : 'hearts'} for the village`) : null,
+      h('ul', { class: 'docket-notes' }, ...notes),
       h('dl', { class: 'docket-facts' },
         h('div', {}, h('dt', {}, 'Your route'), h('dd', {}, `${moves}`)),
         h('div', {}, h('dt', {}, 'Gold'), h('dd', {}, `${this.t.gold}`)),
@@ -632,11 +645,8 @@ export class PlayScreen {
         h('div', {}, h('dt', {}, 'Hints'), h('dd', {}, this.hints === 0 ? 'None' : String(this.hints))),
       ),
       h('div', { class: 'docket-actions' },
-        h('button', { class: 'btn btn-quiet btn-share', type: 'button', onclick: async () => {
-          const r = await shareResult(text);
-          if (!this.alive) return;
-          if (r === 'failed') showCopyBox(status, text);
-          else status.textContent = r === 'shared' ? 'Shared.' : r === 'copied' ? 'Result copied to the clipboard.' : '';
+        h('button', { class: 'btn btn-quiet btn-share', type: 'button', onclick: () => {
+          void openShareSheet(this.app, { puzzle: p, moves, gold: this.t.gold, medal, hints: this.hints, daily, run }, status);
         } }, icon(shareIcon, 18), 'Share'),
         primary,
       ),
@@ -766,7 +776,8 @@ export class PlayScreen {
       if (this.alive && !this.ride) this.map.renderMarkers(this.editor.state);
     }, 1600);
     const k = orderKind(this.town, i);
-    this.say({ text: `${itemName[k][0].toUpperCase()}${itemName[k].slice(1)} from the ${shopName[k]} to House ${houseOf(this.town, i)}${o.fresh ? `, within ${o.fresh} moves of pickup` : ''}.`, tone: 'info' });
+    const who = residentsFor(this.opts.puzzle).get(o.to);
+    this.say({ text: `${itemName[k][0].toUpperCase()}${itemName[k].slice(1)} from the ${shopName[k]} for ${who} at House ${houseOf(this.town, i)}${o.fresh ? `, within ${o.fresh} moves of pickup` : ''}.`, tone: 'info' });
   }
 
   private renderStats() {

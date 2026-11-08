@@ -25,8 +25,12 @@ export interface DailyRecord {
 export interface Settings {
   motion: 'system' | 'reduced' | 'full';
   sound: boolean;
+  music: boolean;
   haptics: boolean;
   speed: 'relaxed' | 'brisk';
+  /** Daily reminder (only offered in the installed app). Hour is local time, 0–23. */
+  reminder: boolean;
+  reminderHour: number;
 }
 
 export interface Draft {
@@ -43,12 +47,14 @@ export interface SaveData {
   daily: Record<string, DailyRecord>;
   settings: Settings;
   drafts: Record<string, Draft>;
+  /** Village projects the player has restored, in order. */
+  restored: string[];
 }
 
-export const DEFAULT_SETTINGS: Settings = { motion: 'system', sound: true, haptics: true, speed: 'relaxed' };
+export const DEFAULT_SETTINGS: Settings = { motion: 'system', sound: true, music: true, haptics: true, speed: 'relaxed', reminder: false, reminderHour: 9 };
 
 export function emptySave(): SaveData {
-  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {} };
+  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {}, restored: [] };
 }
 
 const MEDALS: readonly string[] = ['gold', 'silver', 'bronze'];
@@ -79,6 +85,9 @@ function cleanSettings(v: unknown): Settings {
   if (v.motion === 'system' || v.motion === 'reduced' || v.motion === 'full') s.motion = v.motion;
   if (typeof v.sound === 'boolean') s.sound = v.sound;
   if (typeof v.haptics === 'boolean') s.haptics = v.haptics;
+  if (typeof v.music === 'boolean') s.music = v.music;
+  if (typeof v.reminder === 'boolean') s.reminder = v.reminder;
+  if (isCount(v.reminderHour) && v.reminderHour < 24) s.reminderHour = v.reminderHour;
   if (v.speed === 'relaxed' || v.speed === 'brisk') s.speed = v.speed;
   return s;
 }
@@ -100,6 +109,7 @@ export function parseSave(raw: string | null): SaveData {
   if (isObj(data.daily)) for (const [k, v] of Object.entries(data.daily)) { const r = cleanDaily(v); if (r && DATE_KEY.test(k)) save.daily[k] = r; }
   if (isObj(data.drafts)) for (const [k, v] of Object.entries(data.drafts)) { const r = cleanDraft(v); if (r && r.key === k) save.drafts[k] = r; }
   save.settings = cleanSettings(data.settings);
+  if (Array.isArray(data.restored)) save.restored = [...new Set(data.restored.filter((x): x is string => typeof x === 'string' && /^[a-z-]{1,24}$/.test(x)))];
   return save;
 }
 
@@ -203,6 +213,11 @@ export class SaveStore {
 
   updateSettings(patch: Partial<Settings>) {
     this.data.settings = { ...this.data.settings, ...patch };
+    this.flush();
+  }
+
+  restore(projectId: string) {
+    if (!this.data.restored.includes(projectId)) this.data.restored.push(projectId);
     this.flush();
   }
 

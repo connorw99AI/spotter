@@ -21,8 +21,19 @@ describe('saved progress', () => {
     const b = new SaveStore(mem);
     expect(b.levelRecord('ring-road', 1)).toEqual({ rev: 1, completions: 2, bestMoves: 14, bestMedal: 'gold', bestCleanMoves: 16 });
     expect(b.data.daily['2026-11-08']).toMatchObject({ moves: 14, medal: 'gold', hints: 2 });
-    expect(b.data.settings).toMatchObject({ sound: false, motion: 'reduced', haptics: true });
+    expect(b.data.settings).toMatchObject({ sound: false, motion: 'reduced', haptics: true, music: true, reminder: false });
     expect(b.draft('practice:ring-road', 'ring-road', 1)?.route).toEqual(['D', 'r4']);
+  });
+
+  it('remembers restored village projects and ignores junk', () => {
+    const mem = new MemoryStore();
+    const a = new SaveStore(mem);
+    a.restore('lane');
+    a.restore('lane');
+    a.restore('boxes');
+    expect(new SaveStore(mem).data.restored).toEqual(['lane', 'boxes']);
+    expect(parseSave(JSON.stringify({ version: 1, restored: ['lane', 7, '<script>'] })).restored).toEqual(['lane']);
+    expect(parseSave(JSON.stringify({ version: 1 })).restored).toEqual([]);
   });
 
   it('keeps the best result, not the latest', () => {

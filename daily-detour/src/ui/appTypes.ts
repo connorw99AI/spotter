@@ -6,8 +6,11 @@ import type { Sound } from './sound';
 export type Route =
   | { screen: 'home' }
   | { screen: 'book' }
+  | { screen: 'chapter'; chapterId: string }
   | { screen: 'settings' }
   | { screen: 'how' }
+  | { screen: 'village' }
+  | { screen: 'stamps' }
   | { screen: 'play'; puzzleId: string; mode: 'practice' }
   | { screen: 'play'; puzzleId: string; mode: 'daily'; dateKey: string };
 

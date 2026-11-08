@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PUZZLE_BY_ID } from '../src/data/puzzles';
+import { getPuzzle } from '../src/data/catalog';
 import { DAILY_ROTATION, dailyNumber, dailyPuzzle, dailyPuzzleId, msUntilNextUtcDay, parseDateKey, utcDateKey } from '../src/game/daily';
 
 describe('daily selection (UTC)', () => {
@@ -24,7 +24,7 @@ describe('daily selection (UTC)', () => {
     }
     expect(seen.size).toBe(DAILY_ROTATION.length);
     expect(dailyPuzzleId('2026-01-01')).toBe(DAILY_ROTATION[0]);
-    expect(dailyPuzzle('2026-01-01', PUZZLE_BY_ID).id).toBe(DAILY_ROTATION[0]);
+    expect(dailyPuzzle('2026-01-01', getPuzzle).id).toBe(DAILY_ROTATION[0]);
   });
 
   it('handles dates before the epoch without crashing', () => {

@@ -1,4 +1,4 @@
-import { PUZZLE_BY_ID } from '../data/puzzles';
+import { getChapter, getPuzzle } from '../data/catalog';
 import { dailyPuzzleId, parseDateKey, utcDateKey } from '../game/daily';
 import type { Route } from './appTypes';
 
@@ -10,8 +10,11 @@ export function routeToHash(r: Route): string {
   switch (r.screen) {
     case 'home': return '#town';
     case 'book': return '#book';
+    case 'chapter': return `#chapter-${r.chapterId}`;
     case 'settings': return '#game-settings';
     case 'how': return '#how-to-play';
+    case 'village': return '#village';
+    case 'stamps': return '#stamps';
     case 'play': return r.mode === 'daily' ? `#daily-${r.dateKey}` : `#route-${r.puzzleId}`;
   }
 }
@@ -22,7 +25,10 @@ export function hashToRoute(hash: string, now = new Date()): Route {
   if (h === 'book') return { screen: 'book' };
   if (h === 'game-settings') return { screen: 'settings' };
   if (h === 'how-to-play') return { screen: 'how' };
-  if (h.startsWith('route-') && PUZZLE_BY_ID.has(h.slice(6))) return { screen: 'play', puzzleId: h.slice(6), mode: 'practice' };
+  if (h === 'village') return { screen: 'village' };
+  if (h === 'stamps') return { screen: 'stamps' };
+  if (h.startsWith('chapter-') && getChapter(h.slice(8))) return { screen: 'chapter', chapterId: h.slice(8) };
+  if (h.startsWith('route-') && getPuzzle(h.slice(6))) return { screen: 'play', puzzleId: h.slice(6), mode: 'practice' };
   if (h.startsWith('daily-')) {
     const key = h.slice(6);
     const today = utcDateKey(now);

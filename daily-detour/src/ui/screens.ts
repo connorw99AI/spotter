@@ -1,16 +1,16 @@
 import { medalName, type Medal } from '../core/medals';
 import type { PuzzleDef, Tier } from '../core/types';
-import { DAILY_ROTATION, dailyNumber, dailyPuzzle, msUntilNextUtcDay, utcDateKey } from '../game/daily';
-import { shareResult, shareText } from '../game/share';
-import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles';
+import { dailyNumber, dailyPace, dailyPuzzle, lastFreshDaily, msUntilNextUtcDay, utcDateKey } from '../game/daily';
+import { BOOK_IDS, CHAPTERS, getChapter, getPuzzle, puzzleLabel } from '../data/catalog';
+import { PROJECTS, daysLeftInEvent, eventOn, heartsFrom, projectState, runStats } from '../game/meta';
+import { openShareSheet } from './shareSheet';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, bookIcon, coneIcon, courierSvg, gearIcon, infoIcon, itemIcon, mechanicIcon, C } from './art';
+import { backIcon, basketIcon, bookIcon, calendarIcon, coneIcon, courierSvg, flameIcon, gearIcon, heartIcon, infoIcon, itemIcon, mechanicIcon, shareIcon, C } from './art';
 import { buildTown } from '../core/town';
 import { seeded } from './geometry';
 import { miniMapSvg } from './scene';
 import { flowerBedArt, houseArt, lampArt, pineArt, randomHouseLook, shopArt, treeArt } from './sceneryArt';
 import { THEMES, themeFor } from './theme';
-import { showCopyBox } from './copyBox';
 import { h, icon, setKids } from './dom';
 
 export interface Screen {
@@ -33,11 +33,11 @@ const tierBlurb: Record<Tier, string> = {
   challenging: 'Everything at once. Take your time.',
 };
 
-function stampMini(medal: Medal, label?: string): HTMLElement {
+export function stampMini(medal: Medal, label?: string): HTMLElement {
   return h('span', { class: `stamp-mini stamp-${medal}` }, label ?? medalName[medal]);
 }
 
-function topBar(title: string, back: () => void, backLabel: string): HTMLElement {
+export function topBar(title: string, back: () => void, backLabel: string): HTMLElement {
   return h('header', { class: 'page-top' },
     h('button', { class: 'btn-icon', type: 'button', 'aria-label': backLabel, onclick: back }, icon(backIcon, 22)),
     h('h1', { tabindex: -1 }, title),
@@ -84,6 +84,25 @@ function heroArt(animate: boolean): string {
 
 // ─────────────────────────────────── Home ───────────────────────────────────
 
+/** Book progress, derived from saved records. */
+export function bookProgress(app: AppServices) {
+  let delivered = 0, golds = 0;
+  let next: PuzzleDef | undefined;
+  for (const id of BOOK_IDS) {
+    const p = getPuzzle(id)!;
+    const rec = app.store.levelRecord(p.id, p.rev);
+    if (rec) { delivered++; if (rec.bestMedal === 'gold') golds++; } else if (!next) next = p;
+  }
+  return { delivered, golds, total: BOOK_IDS.length, next };
+}
+
+export function heartCount(app: AppServices): number {
+  const revs = new Map(BOOK_IDS.map((id) => [id, getPuzzle(id)!.rev]));
+  return heartsFrom(app.store.data.levels, revs, app.store.data.daily);
+}
+
+const PACE_LABEL = { gentle: 'Gentle', steady: 'Steady', tricky: 'Tricky' } as const;
+
 export class HomeScreen implements Screen {
   readonly root: HTMLElement;
   private timer = 0;
@@ -117,17 +136,24 @@ export class HomeScreen implements Screen {
   private render() {
     const store = this.app.store;
     const key = this.dateKey;
-    const daily = dailyPuzzle(key, PUZZLE_BY_ID);
+    const daily = dailyPuzzle(key, getPuzzle);
     const n = dailyNumber(key);
     const rec = store.data.daily[key];
     const done = rec && rec.puzzleId === daily.id && rec.rev === daily.rev;
     const draft = store.draft(`daily:${key}`, daily.id, daily.rev);
     const dateLabel = new Date(`${key}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+    const pace = dailyPace(key);
+    const runs = runStats(Object.keys(store.data.daily), key);
+    const ev = eventOn(key);
+    const freshUntil = new Date(`${lastFreshDaily()}T12:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
 
     const shareStatus = h('p', { class: 'share-status', 'aria-live': 'polite' });
+    const runLine = runs.current > 0
+      ? `${runs.current}-day run${runs.waitingToday ? ' · play today to keep it going' : ''}. Missing one day is a rest day; it won’t break your run.`
+      : runs.total > 0 ? `${runs.total} dailies delivered so far. Play today to start a new run.` : 'Play today to start a run. Missing one day is a rest day.';
     const dailyCard = h('article', { class: `daily-card${done ? ' done' : ''}` },
       h('div', { class: 'daily-head' },
-        h('p', { class: 'daily-kicker' }, `Daily #${n}`, h('span', { class: 'daily-date' }, `${dateLabel} (UTC)`)),
+        h('p', { class: 'daily-kicker' }, `Daily #${n}`, h('span', { class: 'daily-date' }, `${dateLabel} (UTC)`), pace ? h('span', { class: `pace pace-${pace}` }, PACE_LABEL[pace]) : null),
         done ? stampMini(rec.medal) : null),
       h('h2', {}, daily.title),
       h('p', { class: 'daily-brief' }, daily.brief),
@@ -136,46 +162,61 @@ export class HomeScreen implements Screen {
         : null,
       h('div', { class: 'daily-actions' },
         done
-          ? h('button', { class: 'btn btn-quiet', type: 'button', onclick: async () => {
-            const r = await shareResult(shareText({ puzzle: daily, moves: rec.moves, gold: daily.gold, medal: rec.medal, hints: rec.hints, daily: { number: n, dateKey: key } }));
-            const text = shareText({ puzzle: daily, moves: rec.moves, gold: daily.gold, medal: rec.medal, hints: rec.hints, daily: { number: n, dateKey: key } });
-            if (r === 'failed') showCopyBox(shareStatus, text);
-            else shareStatus.textContent = r === 'copied' ? 'Result copied to the clipboard.' : r === 'shared' ? 'Shared.' : '';
-          } }, 'Share result')
+          ? h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => openShareSheet(this.app, { puzzle: daily, moves: rec.moves, gold: daily.gold, medal: rec.medal, hints: rec.hints, daily: { number: n, dateKey: key }, run: runs.current }, shareStatus) }, icon(shareIcon, 18), 'Share')
           : null,
         h('button', { class: `btn ${done ? 'btn-quiet' : 'btn-primary'}`, type: 'button', onclick: () => this.app.go({ screen: 'play', puzzleId: daily.id, mode: 'daily', dateKey: key }) },
           done ? 'Ride it again' : draft ? 'Carry on with today’s route' : 'Play today’s route'),
       ),
       shareStatus,
+      h('p', { class: 'run-line' }, icon(flameIcon, 16), runLine),
       h('p', { class: 'daily-note' },
-        `Everyone gets the same route each UTC day. The daily rotates through ${DAILY_ROTATION.length} hand-made routes from the book. `,
+        `Everyone gets the same route each UTC day: a new one every day until ${freshUntil}, then the year repeats. `,
         h('span', { class: 'countdown' }, this.countdown())),
     );
 
-    const solved = PUZZLES.filter((p) => store.levelRecord(p.id, p.rev));
-    const golds = PUZZLES.filter((p) => store.levelRecord(p.id, p.rev)?.bestMedal === 'gold').length;
-    const next = PUZZLES.find((p) => !store.levelRecord(p.id, p.rev));
+    const prog = bookProgress(this.app);
+    const next = prog.next;
     const continueCard = h('article', { class: 'continue-card' },
       next
         ? h('div', {},
-          h('p', { class: 'continue-kicker' }, solved.length === 0 ? 'New here? Start with' : 'Up next in the book'),
-          h('h2', {}, `${next.number}. ${next.title}`),
+          h('p', { class: 'continue-kicker' }, prog.delivered === 0 ? 'New here? Start with' : 'Up next in the book'),
+          h('h2', {}, `${puzzleLabel(next)}: ${next.title}`),
           h('p', { class: 'muted' }, next.brief))
-        : h('div', {}, h('p', { class: 'continue-kicker' }, 'Every route delivered'), h('h2', {}, `${golds} of ${PUZZLES.length} at gold`), h('p', { class: 'muted' }, 'Chase the gold stamps you’re missing.')),
+        : h('div', {}, h('p', { class: 'continue-kicker' }, 'Every route delivered'), h('h2', {}, `${prog.golds} of ${prog.total} at gold`), h('p', { class: 'muted' }, 'Chase the gold stamps you’re missing.')),
       h('div', { class: 'continue-actions' },
-        next ? h('button', { class: `btn ${solved.length === 0 ? 'btn-primary' : 'btn-secondary'}`, type: 'button', onclick: () => this.app.go({ screen: 'play', puzzleId: next.id, mode: 'practice' }) }, solved.length === 0 ? 'Start the first round' : 'Play') : null,
+        next ? h('button', { class: `btn ${prog.delivered === 0 ? 'btn-primary' : 'btn-secondary'}`, type: 'button', onclick: () => this.app.go({ screen: 'play', puzzleId: next.id, mode: 'practice' }) }, prog.delivered === 0 ? 'Start the first round' : 'Play') : null,
         h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => this.app.go({ screen: 'book' }) }, icon(bookIcon, 18), 'Route book'),
       ),
-      h('p', { class: 'progress-line' }, `${solved.length} of ${PUZZLES.length} delivered · ${golds} gold`),
+      h('p', { class: 'progress-line' }, `${prog.delivered} of ${prog.total} delivered · ${prog.golds} gold`),
     );
 
+    const hearts = heartCount(this.app);
+    const ready = PROJECTS.filter((p) => projectState(p, hearts, store.data.restored) === 'ready');
+    const upcoming = PROJECTS.find((p) => projectState(p, hearts, store.data.restored) === 'locked');
+    const villageCard = h('article', { class: 'village-card' },
+      h('div', { class: 'village-card-main' },
+        h('p', { class: 'continue-kicker' }, 'Your village'),
+        h('h2', {}, ready.length ? `${ready.length === 1 ? 'A project is' : `${ready.length} projects are`} ready` : upcoming ? upcoming.title : 'Fully restored'),
+        h('p', { class: 'muted' }, ready.length ? `${ready[0].resident} is waiting: ${ready[0].title.toLowerCase()}.` : upcoming ? `${Math.max(0, upcoming.cost - hearts)} more hearts. Deliveries earn hearts: 1 for bronze, 2 for silver, 3 for gold.` : 'Every corner of the village is mended. The fete goes on.')),
+      h('div', { class: 'village-card-side' },
+        h('span', { class: 'hearts', 'aria-label': `${hearts} hearts` }, icon(heartIcon, 18), String(hearts)),
+        h('button', { class: `btn ${ready.length ? 'btn-primary' : 'btn-quiet'}`, type: 'button', onclick: () => this.app.go({ screen: 'village' }) }, 'Visit the village')),
+    );
+
+    const banner = ev ? h('aside', { class: 'event-banner' },
+      h('p', { class: 'event-title' }, ev.title, h('span', {}, `${daysLeftInEvent(ev, key)} days left`)),
+      h('p', {}, `${ev.blurb} Deliver three event dailies to earn ${ev.keepsake} for your village.`)) : null;
+
+    const first = prog.delivered === 0;
     setKids(this.root,
       h('div', { class: 'home-hero' },
         h('div', { class: 'hero-frame' }),
         h('h1', { class: 'logo', tabindex: -1 }, 'The Daily Detour'),
         h('p', { class: 'tagline' }, 'A little journey. A clever detour.')),
-      h('div', { class: 'home-cards' }, solved.length === 0 ? continueCard : dailyCard, solved.length === 0 ? dailyCard : continueCard),
+      banner,
+      h('div', { class: 'home-cards' }, first ? continueCard : dailyCard, first ? dailyCard : continueCard, villageCard),
       h('nav', { class: 'home-nav', 'aria-label': 'More' },
+        h('button', { class: 'btn-link', type: 'button', onclick: () => this.app.go({ screen: 'stamps' }) }, icon(calendarIcon, 18), 'Stamps'),
         h('button', { class: 'btn-link', type: 'button', onclick: () => this.app.go({ screen: 'how' }) }, icon(infoIcon, 18), 'How to play'),
         h('button', { class: 'btn-link', type: 'button', onclick: () => this.app.go({ screen: 'settings' }) }, icon(gearIcon, 18), 'Settings')),
       store.persistent ? null : h('p', { class: 'storage-warn' }, 'This browser isn’t letting the game save, so progress lasts until you close the tab.'),
@@ -194,24 +235,58 @@ export class HomeScreen implements Screen {
 export class BookScreen implements Screen {
   readonly root: HTMLElement;
 
-  constructor(private readonly app: AppServices) {
-    const store = app.store;
-    const next = PUZZLES.find((p) => !store.levelRecord(p.id, p.rev));
-    const sections = (['tutorial', 'approachable', 'intermediate', 'challenging'] as Tier[]).map((tier) => {
-      const ps = PUZZLES.filter((p) => p.tier === tier);
-      return h('section', { class: 'book-section', 'aria-labelledby': `tier-${tier}` },
-        h('h2', { id: `tier-${tier}` }, tierName[tier]),
-        h('p', { class: 'muted' }, tierBlurb[tier]),
-        h('ol', { class: 'tickets' }, ...ps.map((p) => h('li', {}, this.ticket(p, p === next)))),
+  constructor(app: AppServices) {
+    const prog = bookProgress(app);
+    const cards = CHAPTERS.map((c) => {
+      const ps = c.ids.map((id) => getPuzzle(id)!);
+      const recs = ps.map((p) => app.store.levelRecord(p.id, p.rev));
+      const done = recs.filter(Boolean).length;
+      const golds = recs.filter((r) => r?.bestMedal === 'gold').length;
+      const cover = ps[Math.min(ps.length - 1, 4)];
+      const btn = h('button', { class: 'chapter-card', type: 'button', onclick: () => app.go({ screen: 'chapter', chapterId: c.id }) },
+        h('span', { class: 'chapter-cover', 'aria-hidden': 'true' }),
+        h('span', { class: 'chapter-main' },
+          h('span', { class: 'chapter-title' }, c.title),
+          h('span', { class: 'chapter-blurb' }, c.blurb),
+          h('span', { class: 'chapter-progress' },
+            h('span', { class: 'bar', 'aria-hidden': 'true' }, h('i', { style: `width:${(100 * done) / ps.length}%` })),
+            `${done} of ${ps.length} delivered · ${golds} gold`)),
       );
+      btn.querySelector('.chapter-cover')!.insertAdjacentHTML('afterbegin', miniMapSvg(buildTown(cover), themeFor(cover)));
+      return h('li', {}, btn);
     });
-    const solved = PUZZLES.filter((p) => store.levelRecord(p.id, p.rev)).length;
-    const golds = PUZZLES.filter((p) => store.levelRecord(p.id, p.rev)?.bestMedal === 'gold').length;
     this.root = h('section', { class: 'screen book' },
       topBar('Route book', () => app.go({ screen: 'home' }), 'Back to town'),
       h('div', { class: 'book-body' },
-        h('p', { class: 'book-summary' }, `${solved} of ${PUZZLES.length} delivered, ${golds} at gold. Every route is open — play them in any order.`),
-        ...sections),
+        h('p', { class: 'book-summary' }, `${prog.delivered} of ${prog.total} delivered, ${prog.golds} at gold. Every route is open, in any order.`),
+        h('ol', { class: 'chapters' }, ...cards)),
+    );
+  }
+
+  destroy() { this.root.remove(); }
+}
+
+export class ChapterScreen implements Screen {
+  readonly root: HTMLElement;
+
+  constructor(private readonly app: AppServices, chapterId: string) {
+    const c = getChapter(chapterId)!;
+    const ps = c.ids.map((id) => getPuzzle(id)!);
+    const next = ps.find((p) => !app.store.levelRecord(p.id, p.rev));
+    const groups: [string, string, PuzzleDef[]][] = c.id === 'classic'
+      ? (['tutorial', 'approachable', 'intermediate', 'challenging'] as Tier[]).map((t) => [tierName[t], tierBlurb[t], ps.filter((p) => p.tier === t)])
+      : [['Gentle', 'A few orders and one rule at a time.', ps.filter((p) => p.tier === 'approachable')],
+        ['Steady', 'Busier rounds with rules working together.', ps.filter((p) => p.tier === 'intermediate')],
+        ['Tricky', 'The best of the chapter. Take your time.', ps.filter((p) => p.tier === 'challenging')]];
+    this.root = h('section', { class: 'screen book' },
+      topBar(c.title, () => app.go({ screen: 'book' }), 'Back to the route book'),
+      h('div', { class: 'book-body' },
+        h('p', { class: 'book-summary' }, c.blurb),
+        ...groups.filter(([, , list]) => list.length).map(([name, blurb, list], gi) => h('section', { class: 'book-section', 'aria-labelledby': `grp-${gi}` },
+          h('h2', { id: `grp-${gi}` }, name),
+          h('p', { class: 'muted' }, blurb),
+          h('ol', { class: 'tickets' }, ...list.map((p) => h('li', {}, this.ticket(p, p === next)))),
+        ))),
     );
   }
 
@@ -221,7 +296,7 @@ export class BookScreen implements Screen {
     const result = rec
       ? h('span', { class: 'ticket-result' }, stampMini(rec.bestMedal), h('span', {}, `Best ${rec.bestMoves} · gold ${p.gold}`), rec.bestCleanMoves !== undefined ? h('span', { class: 'clean', title: 'Delivered without hints' }, 'no hints') : null)
       : h('span', { class: 'ticket-result muted' }, isNext ? 'Up next' : `Gold ${p.gold}`);
-    const label = `Route ${p.number}: ${p.title}. ${rec ? `${medalName[rec.bestMedal]}, best ${rec.bestMoves} moves.` : 'Not delivered yet.'} ${mech.map((m) => mechanicIcon[m].label).join(', ')}`;
+    const label = `${puzzleLabel(p)}: ${p.title}. ${rec ? `${medalName[rec.bestMedal]}, best ${rec.bestMoves} moves.` : 'Not delivered yet.'} ${mech.map((m) => mechanicIcon[m].label).join(', ')}`;
     const btn = h('button', { class: `ticket${rec ? ' done' : ''}${isNext ? ' next' : ''}`, type: 'button', 'aria-label': label, onclick: () => this.app.go({ screen: 'play', puzzleId: p.id, mode: 'practice' }) },
       h('span', { class: 'ticket-thumb', 'aria-hidden': 'true' }),
       h('span', { class: 'ticket-main' },

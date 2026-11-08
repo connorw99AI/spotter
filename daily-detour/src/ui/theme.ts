@@ -1,11 +1,12 @@
 import type { PuzzleDef } from '../core/types';
+import type { SeasonEvent } from '../game/meta';
 
 /**
  * Scenery palettes. Only the landscape changes between themes; streets, the
  * route, markers and UI keep the same colours so puzzles always read the same.
  */
 export interface Theme {
-  name: 'spring' | 'summer' | 'autumn' | 'evening';
+  name: 'spring' | 'summer' | 'autumn' | 'evening' | 'winter';
   label: string;
   lawn: string;
   lawnTuft: string;
@@ -91,6 +92,20 @@ export const THEMES: Record<Theme['name'], Theme> = {
     water: '#86B5C2', waterDeep: '#5E93A3', waterHi: '#F3D9A9', bank: '#AFC79A',
     sun: 'rgba(255, 214, 150, .18)', tint: 'rgba(92, 64, 120, .17)', lit: true,
   },
+  winter: {
+    name: 'winter', label: 'Winter lights',
+    lawn: '#E4ECEE', lawnTuft: '#CCDADD', wild: '#DCE6E8',
+    garden: ['#DEE7E9', '#D4DFE2'], meadow: '#E0E9EB', meadowDots: ['#FFFFFF', '#C9D8DB', '#D9667E'],
+    hedge: '#5E8160', hedgeDeep: '#47684A', soil: '#9C8573', crop: '#C6D3CF', paving: '#ECE7DC', pavingLine: '#D3CCBC',
+    leaves: [
+      { dark: '#4C6E50', mid: '#5F8562', light: '#F4F8F9' },
+      { dark: '#557A5A', mid: '#6A8F6B', light: '#FFFFFF' },
+      { dark: '#8A6E5A', mid: '#A3876F', light: '#F4F8F9' },
+    ],
+    pine: ['#3D5E46', '#54775A'],
+    water: '#A6C2CE', waterDeep: '#86A6B6', waterHi: '#FFFFFF', bank: '#D5E1E4',
+    sun: 'rgba(255, 255, 255, .16)', tint: 'rgba(60, 80, 140, .12)', lit: true,
+  },
 };
 
 export function themeFor(p: PuzzleDef): Theme {
@@ -100,4 +115,18 @@ export function themeFor(p: PuzzleDef): Theme {
     case 'intermediate': return THEMES.autumn;
     case 'challenging': return THEMES.evening;
   }
+}
+
+/** Seasonal events dress the daily routes in their own scenery. */
+export function themeForEvent(e: SeasonEvent | null, p: PuzzleDef): Theme {
+  if (!e) return themeFor(p);
+  return e.id === 'winter' ? THEMES.winter : e.id === 'blossom' ? THEMES.spring : e.id === 'harvest' ? THEMES.autumn : THEMES.summer;
+}
+
+/** Scenery for the village, following the calendar. */
+export function themeForMonth(month: number): Theme {
+  if (month === 12 || month <= 2) return THEMES.winter;
+  if (month <= 5) return THEMES.spring;
+  if (month <= 8) return THEMES.summer;
+  return THEMES.autumn;
 }

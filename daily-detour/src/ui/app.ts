@@ -1,13 +1,14 @@
 import type { PuzzleDef } from '../core/types';
-import { PUZZLES, PUZZLE_BY_ID } from '../data/puzzles';
+import { getPuzzle, nextInBook } from '../data/catalog';
 import { dailyPuzzleId } from '../game/daily';
 import { SaveStore } from '../game/storage';
 import { AdvisorClient } from './advisorClient';
 import type { AppServices, Route } from './appTypes';
 import { hashToRoute, routeToHash } from './routes';
 import { PlayScreen } from './play';
-import { BookScreen, HomeScreen, HowScreen, SettingsScreen, type Screen } from './screens';
+import { BookScreen, ChapterScreen, HomeScreen, HowScreen, SettingsScreen, type Screen } from './screens';
 import { Sound, buzz } from './sound';
+import { StampsScreen, VillageScreen } from './village';
 
 export class App implements AppServices {
   readonly store = new SaveStore();
@@ -38,7 +39,7 @@ export class App implements AppServices {
   }
 
   nextPuzzle(p: PuzzleDef): PuzzleDef | undefined {
-    return PUZZLES.find((q) => q.number === p.number + 1);
+    return nextInBook(p);
   }
 
   go(route: Route) {
@@ -61,15 +62,18 @@ export class App implements AppServices {
     let screen: Screen | PlayScreen;
     switch (route.screen) {
       case 'book': screen = new BookScreen(this); break;
+      case 'chapter': screen = new ChapterScreen(this, route.chapterId); break;
       case 'settings': screen = new SettingsScreen(this, () => this.applySettings()); break;
       case 'how': screen = new HowScreen(this); break;
+      case 'village': screen = new VillageScreen(this); break;
+      case 'stamps': screen = new StampsScreen(this); break;
       case 'play': {
         if (route.mode === 'daily') {
           // The daily puzzle is fixed by the date in the link, so a session that
           // crosses midnight keeps the same route.
-          screen = new PlayScreen(this, { puzzle: PUZZLE_BY_ID.get(dailyPuzzleId(route.dateKey))!, mode: 'daily', dateKey: route.dateKey });
+          screen = new PlayScreen(this, { puzzle: getPuzzle(dailyPuzzleId(route.dateKey))!, mode: 'daily', dateKey: route.dateKey });
         } else {
-          screen = new PlayScreen(this, { puzzle: PUZZLE_BY_ID.get(route.puzzleId)!, mode: 'practice' });
+          screen = new PlayScreen(this, { puzzle: getPuzzle(route.puzzleId)!, mode: 'practice' });
         }
         break;
       }

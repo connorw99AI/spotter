@@ -77,6 +77,8 @@ export interface PuzzleDef {
   /** Content revision. Bump whenever rules-relevant data changes; invalidates saved bests. */
   rev: number;
   number: number;
+  /** Chapter of the route book this puzzle belongs to (classic puzzles have none). */
+  pack?: string;
   title: string;
   brief: string;
   tier: Tier;

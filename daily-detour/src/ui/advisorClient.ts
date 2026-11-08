@@ -1,5 +1,5 @@
 import { buildTown } from '../core/town';
-import { PUZZLE_BY_ID } from '../data/puzzles';
+import type { PuzzleDef } from '../core/types';
 import { advise, type Advice } from '../game/advisor';
 import AdvisorWorker from '../game/advisor.worker.ts?worker&inline';
 
@@ -35,17 +35,16 @@ export class AdvisorClient {
     this.pending.clear();
   }
 
-  request(puzzleId: string, route: readonly string[]): Promise<Advice | null> {
+  request(def: PuzzleDef, route: readonly string[]): Promise<Advice | null> {
     const seq = ++this.seq;
     return new Promise((resolve) => {
       if (this.worker) {
         this.pending.set(seq, resolve);
-        this.worker.postMessage({ seq, puzzleId, route: [...route] });
+        this.worker.postMessage({ seq, def, route: [...route] });
         return;
       }
       setTimeout(() => {
-        const def = PUZZLE_BY_ID.get(puzzleId);
-        resolve(def ? advise(buildTown(def), route, def.gold) : null);
+        resolve(advise(buildTown(def), route, def.gold));
       }, 0);
     });
   }
