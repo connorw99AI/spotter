@@ -1,0 +1,215 @@
+import type { Medal } from '../core/medals';
+import type { NodeId } from '../core/types';
+
+export const SAVE_KEY = 'daily-detour/save';
+export const SAVE_VERSION = 1;
+
+export interface LevelRecord {
+  /** Puzzle revision this record was earned on. Records for other revisions are ignored. */
+  rev: number;
+  completions: number;
+  bestMoves: number;
+  bestMedal: Medal;
+  /** Best result reached without any hints, if any. */
+  bestCleanMoves?: number;
+}
+
+export interface DailyRecord {
+  puzzleId: string;
+  rev: number;
+  moves: number;
+  medal: Medal;
+  hints: number;
+}
+
+export interface Settings {
+  motion: 'system' | 'reduced' | 'full';
+  sound: boolean;
+  haptics: boolean;
+  speed: 'relaxed' | 'brisk';
+}
+
+export interface Draft {
+  key: string;
+  puzzleId: string;
+  rev: number;
+  route: NodeId[];
+  hints: number;
+}
+
+export interface SaveData {
+  version: number;
+  levels: Record<string, LevelRecord>;
+  daily: Record<string, DailyRecord>;
+  settings: Settings;
+  drafts: Record<string, Draft>;
+}
+
+export const DEFAULT_SETTINGS: Settings = { motion: 'system', sound: true, haptics: true, speed: 'relaxed' };
+
+export function emptySave(): SaveData {
+  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {} };
+}
+
+const MEDALS: readonly string[] = ['gold', 'silver', 'bronze'];
+const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 0 && v < 1e6;
+
+function cleanLevel(v: unknown): LevelRecord | null {
+  if (!isObj(v) || !isCount(v.rev) || !isCount(v.completions) || !isCount(v.bestMoves) || !MEDALS.includes(v.bestMedal as string)) return null;
+  const r: LevelRecord = { rev: v.rev, completions: v.completions, bestMoves: v.bestMoves, bestMedal: v.bestMedal as Medal };
+  if (isCount(v.bestCleanMoves)) r.bestCleanMoves = v.bestCleanMoves;
+  return r;
+}
+
+function cleanDaily(v: unknown): DailyRecord | null {
+  if (!isObj(v) || typeof v.puzzleId !== 'string' || !isCount(v.rev) || !isCount(v.moves) || !isCount(v.hints) || !MEDALS.includes(v.medal as string)) return null;
+  return { puzzleId: v.puzzleId, rev: v.rev, moves: v.moves, medal: v.medal as Medal, hints: v.hints };
+}
+
+function cleanDraft(v: unknown): Draft | null {
+  if (!isObj(v) || typeof v.key !== 'string' || typeof v.puzzleId !== 'string' || !isCount(v.rev) || !isCount(v.hints)) return null;
+  if (!Array.isArray(v.route) || v.route.length > 500 || !v.route.every((n) => typeof n === 'string')) return null;
+  return { key: v.key, puzzleId: v.puzzleId, rev: v.rev, route: v.route as string[], hints: v.hints };
+}
+
+function cleanSettings(v: unknown): Settings {
+  const s = { ...DEFAULT_SETTINGS };
+  if (!isObj(v)) return s;
+  if (v.motion === 'system' || v.motion === 'reduced' || v.motion === 'full') s.motion = v.motion;
+  if (typeof v.sound === 'boolean') s.sound = v.sound;
+  if (typeof v.haptics === 'boolean') s.haptics = v.haptics;
+  if (v.speed === 'relaxed' || v.speed === 'brisk') s.speed = v.speed;
+  return s;
+}
+
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parse saved JSON defensively: keep every valid entry, drop anything malformed. */
+export function parseSave(raw: string | null): SaveData {
+  const save = emptySave();
+  if (!raw) return save;
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return save;
+  }
+  if (!isObj(data) || typeof data.version !== 'number' || data.version > SAVE_VERSION) return save;
+  if (isObj(data.levels)) for (const [k, v] of Object.entries(data.levels)) { const r = cleanLevel(v); if (r) save.levels[k] = r; }
+  if (isObj(data.daily)) for (const [k, v] of Object.entries(data.daily)) { const r = cleanDaily(v); if (r && DATE_KEY.test(k)) save.daily[k] = r; }
+  if (isObj(data.drafts)) for (const [k, v] of Object.entries(data.drafts)) { const r = cleanDraft(v); if (r && r.key === k) save.drafts[k] = r; }
+  save.settings = cleanSettings(data.settings);
+  return save;
+}
+
+/** Minimal Storage surface so tests can inject a fake or a throwing store. */
+export interface KeyValueStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function defaultStore(): KeyValueStore | null {
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls) return null;
+    const probe = '__dd_probe__';
+    ls.setItem(probe, '1');
+    ls.removeItem(probe);
+    return ls;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Progress persistence. Falls back to memory when storage is unavailable
+ * (private mode, blocked cookies) so the game keeps working for the session.
+ */
+export class SaveStore {
+  data: SaveData;
+  readonly persistent: boolean;
+  private store: KeyValueStore | null;
+
+  constructor(store: KeyValueStore | null | undefined = undefined) {
+    this.store = store === undefined ? defaultStore() : store;
+    let raw: string | null = null;
+    try {
+      raw = this.store?.getItem(SAVE_KEY) ?? null;
+    } catch {
+      this.store = null;
+    }
+    this.persistent = this.store !== null;
+    this.data = parseSave(raw);
+  }
+
+  flush(): boolean {
+    if (!this.store) return false;
+    try {
+      this.store.setItem(SAVE_KEY, JSON.stringify(this.data));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  levelRecord(puzzleId: string, rev: number): LevelRecord | undefined {
+    const r = this.data.levels[puzzleId];
+    return r && r.rev === rev ? r : undefined;
+  }
+
+  /** Records a completion; returns whether it improved the personal best. */
+  recordCompletion(puzzleId: string, rev: number, moves: number, medal: Medal, hints: number): { newBest: boolean; previousBest?: number } {
+    const prev = this.levelRecord(puzzleId, rev);
+    const rank = { gold: 3, silver: 2, bronze: 1 } as const;
+    const next: LevelRecord = prev
+      ? { ...prev, completions: prev.completions + 1 }
+      : { rev, completions: 1, bestMoves: moves, bestMedal: medal };
+    const newBest = !prev || moves < prev.bestMoves;
+    if (newBest) next.bestMoves = moves;
+    if (!prev || rank[medal] > rank[prev.bestMedal]) next.bestMedal = medal;
+    if (hints === 0 && (next.bestCleanMoves === undefined || moves < next.bestCleanMoves)) next.bestCleanMoves = moves;
+    this.data.levels[puzzleId] = next;
+    this.flush();
+    return { newBest, previousBest: prev?.bestMoves };
+  }
+
+  /** The first daily completion for a date is kept; later replays only improve it. */
+  recordDaily(dateKey: string, rec: DailyRecord) {
+    const prev = this.data.daily[dateKey];
+    if (!prev || prev.puzzleId !== rec.puzzleId || rec.moves < prev.moves) this.data.daily[dateKey] = rec;
+    this.flush();
+  }
+
+  saveDraft(d: Draft) {
+    if (d.route.length <= 1) delete this.data.drafts[d.key];
+    else this.data.drafts[d.key] = d;
+    // Keep drafts bounded.
+    const keys = Object.keys(this.data.drafts);
+    if (keys.length > 30) delete this.data.drafts[keys[0]];
+    this.flush();
+  }
+
+  draft(key: string, puzzleId: string, rev: number): Draft | undefined {
+    const d = this.data.drafts[key];
+    return d && d.puzzleId === puzzleId && d.rev === rev ? d : undefined;
+  }
+
+  clearDraft(key: string) {
+    delete this.data.drafts[key];
+    this.flush();
+  }
+
+  updateSettings(patch: Partial<Settings>) {
+    this.data.settings = { ...this.data.settings, ...patch };
+    this.flush();
+  }
+
+  resetProgress() {
+    const settings = this.data.settings;
+    this.data = emptySave();
+    this.data.settings = settings;
+    this.flush();
+  }
+}

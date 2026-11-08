@@ -1,0 +1,20 @@
+{
+  "name": "the-daily-detour",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "A cozy delivery-route puzzle set in a miniature neighbourhood.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build && node scripts/inline.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "analyze": "vite-node scripts/analyze.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8"
+  }
+}

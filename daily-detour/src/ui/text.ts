@@ -1,0 +1,93 @@
+import type { BlockReason, StepEvent } from '../core/rules';
+import type { Town } from '../core/town';
+import type { ShopKind } from '../core/types';
+import type { DoomReason, Objective } from '../game/advisor';
+
+export const shopName: Record<ShopKind, string> = {
+  bakery: 'Bakery',
+  florist: 'Florist',
+  icecream: 'Ice-cream parlour',
+  grocer: 'Grocer',
+};
+
+export const itemName: Record<ShopKind, string> = {
+  bakery: 'bread',
+  florist: 'tulips',
+  icecream: 'ice cream',
+  grocer: 'veg box',
+};
+
+const spoilVerb: Record<ShopKind, string> = { bakery: 'go stale', florist: 'wilt', icecream: 'melt', grocer: 'spoil' };
+const spoilVerbs: Record<ShopKind, string> = { bakery: 'goes stale', florist: 'wilts', icecream: 'melts', grocer: 'spoils' };
+
+export function orderKind(town: Town, order: number): ShopKind {
+  return town.shopKind.get(town.orders[order].from)!;
+}
+
+export function houseOf(town: Town, order: number): string {
+  return town.houseLetter.get(town.orders[order].to)!;
+}
+
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+export function describeEvents(town: Town, events: readonly StepEvent[], allDone: boolean): string | null {
+  const parts: string[] = [];
+  for (const e of events) {
+    if (e.type === 'pickup') {
+      const k = orderKind(town, e.order);
+      const lim = town.orders[e.order].fresh;
+      parts.push(`Collected the ${itemName[k]} for House ${houseOf(town, e.order)}.` + (lim ? ` It ${spoilVerbs[k]} after ${plural(lim, 'move')}.` : ''));
+    } else if (e.type === 'deliver') {
+      parts.push(`Delivered the ${itemName[orderKind(town, e.order)]} to House ${houseOf(town, e.order)}.`);
+    } else if (e.type === 'full') {
+      const k = orderKind(town, e.order);
+      parts.push(`Basket full — the ${itemName[k]} for House ${houseOf(town, e.order)} waits at the ${shopName[k]} until you have room.`);
+    } else if (e.type === 'early') {
+      const k = orderKind(town, e.order);
+      parts.push(`House ${houseOf(town, e.order)} is waiting for ${itemName[k]} from the ${shopName[k]}. Collect it first.`);
+    } else if (e.type === 'home' && e.complete) {
+      return 'Home with everything delivered. Press Deliver to send the courier off.';
+    }
+  }
+  if (allDone && events.some((e) => e.type === 'deliver')) parts.push('That’s everything — head home.');
+  return parts.length ? parts.join(' ') : null;
+}
+
+export function describeBlock(town: Town, r: BlockReason): string {
+  switch (r.type) {
+    case 'no-street': return 'No street goes there. Pick a corner joined to the end of your route.';
+    case 'closed': return 'Roadworks: this street is closed in both directions.';
+    case 'one-way': return 'One-way street — it only runs the other way.';
+    case 'spoil': {
+      const k = orderKind(town, r.order);
+      return `The ${itemName[k]} would ${spoilVerb[k]}! It must reach House ${houseOf(town, r.order)} within ${plural(r.limit, 'move')} of pickup.`;
+    }
+  }
+}
+
+export function describeDoom(town: Town, d: DoomReason | undefined): string {
+  if (d?.type === 'spoil') {
+    const k = orderKind(town, d.order);
+    return `This route can’t finish: the ${itemName[k]} can’t reach House ${houseOf(town, d.order)} before it ${spoilVerbs[k]}.`;
+  }
+  if (d?.type === 'stuck') return 'This route can’t finish: the one-way streets won’t lead back from here.';
+  return 'This route can’t finish from here — every way on spoils an order.';
+}
+
+export function describeObjective(town: Town, o: Objective): string {
+  if (o.kind === 'home') return 'Next: ride home to your cottage.';
+  const k = orderKind(town, o.order);
+  if (o.kind === 'pickup') return `Next: collect the ${itemName[k]} for House ${houseOf(town, o.order)} at the ${shopName[k]}.`;
+  return `Next: deliver the ${itemName[k]} to House ${houseOf(town, o.order)}.`;
+}
+
+export function describeNodeForStep(town: Town, node: string): string {
+  if (node === town.depot) return 'your cottage';
+  const shop = town.shopKind.get(node);
+  if (shop) return `the ${shopName[shop]}`;
+  const house = town.houseLetter.get(node);
+  if (house) return `House ${house}`;
+  return 'the highlighted corner';
+}
+
+export { plural };
