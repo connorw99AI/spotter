@@ -660,6 +660,7 @@ export class PlayScreen {
     const confetti = this.app.reducedMotion() ? null : this.confetti(medal);
     this.docket.replaceChildren(...[confetti, card].filter(Boolean) as HTMLElement[]);
     this.docket.hidden = false;
+    this.later(() => this.app.sound.play('stamp'), this.app.reducedMotion() ? 0 : 260);
     this.root.classList.add('docket-open');
     this.later(() => (card.querySelector('.btn-primary') as HTMLElement | null)?.focus(), 50);
   }

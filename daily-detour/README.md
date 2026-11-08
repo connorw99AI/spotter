@@ -1,57 +1,64 @@
 # The Daily Detour
 
-A cozy delivery-route puzzle set in a miniature neighbourhood. Plan a courier's round: collect orders,
-deliver them under a few simple rules, and ride home. *A little journey. A clever detour.*
+A cozy delivery-route puzzle set in a miniature neighbourhood. Plan a courier's round:
+collect orders, deliver them under a few simple rules, and ride home.
+*A little journey. A clever detour.*
+
+## What's in the game
+- **485 puzzles beyond the tutorials:** 20 hand-made classic routes that teach every rule,
+  120 more in five route-book chapters, and 365 daily puzzles (a new one each UTC day from
+  9 November 2026 to 8 November 2027, gentle on Mondays and trickiest at the weekend).
+- **Rules:** pickup before delivery, roadworks, fresh orders that melt or wilt, one-way
+  streets, and a basket that holds two.
+- **Hints** in three stages, computed from the player's own route, with an explicit undo when
+  a route can no longer finish.
+- **Your village:** deliveries earn hearts (bronze 1, silver 2, gold 3) that restore 12 corners
+  of the courier's home village, each with a note from the resident who asked.
+- **Residents** on every route, with thank-you notes on the result card.
+- **Seasonal events** on fixed UTC dates (Blossom Week, Summer Fete, Harvest Fair, Winter Lights)
+  that change the daily's scenery and earn village keepsakes.
+- **Forgiving runs:** missing one day is a rest day; only two missed days in a row end a run.
+  A stamp calendar keeps every daily.
+- **Sharing:** a spoiler-free result card (the town, the stamp, moves, hints and run; never the
+  route) through the native share sheet, with copy and save fallbacks.
+- **Sound:** synthesised effects and a gentle generated music loop, each with its own setting.
+  Recorded audio can replace any of it (see `public/audio/README.md`).
+- **Installable and offline:** web manifest and service worker; Capacitor projects for iOS and
+  Android with a daily reminder and native haptics.
 
 ## Run it
-
 ```sh
 npm install
 npm run dev        # http://localhost:5173
-npm test           # 145 unit tests (rules, solver, editor, content, daily, storage, links)
-npm run build      # typecheck + production build + single-file builds in dist/
-npm run analyze    # design report for all 20 puzzles
+npm test           # unit tests: rules, solver, editor, every puzzle, daily schedule, storage, meta
+npm run build      # typecheck, production build, single-file builds and service worker in dist/
+npm run analyze    # design report for the 20 classic puzzles
 ```
 
-`npm run build` writes `dist/the-daily-detour.html`, a self-contained file that runs from disk.
+## Making content
+```sh
+npm run content:generate   # writes candidate pools to pool/ (a few minutes)
+npm run content:curate     # picks the best into src/data/generated.ts
+```
+`scripts/generate.ts` builds towns from five layout families and keeps only puzzles that pass
+the same checks as the hand-made set: valid and readable, solvable, the gold target verified,
+every rule shaping the answer, naive nearest-job play losing, no one-way traps, little
+back-and-forth, and fast to solve. The tests re-check all 485 every run. No person has played
+every generated puzzle yet; playtesting is the next step that matters most.
 
-## How to play
-
-- Drag from the end of your route through neighbouring corners, or tap the next corner.
-- Every street costs one move. Streets can be ridden more than once.
-- Passing a shop collects its orders; passing the right house delivers them. Passing a house before you
-  have its order does nothing.
-- Finish at your cottage with everything delivered, then press **Deliver**.
-- Drag back along the route to erase. After a pickup or drop-off, stepping back turns the courier round
-  instead (a real U-turn); Undo removes it.
-- Rules introduced along the way: roadworks (closed streets), fresh orders that melt or wilt a set number of
-  moves after pickup, one-way streets, and a basket that holds two orders. A full basket rides past a shop
-  and the order waits.
-- Keyboard: arrow keys ride toward a corner (Home / Page Up / End / Page Down for diagonals), Space picks
-  between nearby corners, Enter rides there, Backspace or Ctrl+Z undoes.
-
-Medals: gold is the solver's optimum, silver is within 15% of it (at least 2 moves of slack), bronze is any
-valid delivery. Hints come in three stages (a strategic thought, the next objective, one step) and are always
-computed from the player's current route; when a route can no longer finish, the game says why and offers an
-explicit "Undo to move N".
-
-The daily challenge is the same for everyone on a UTC date. It rotates through the 17 non-tutorial puzzles in
-a fixed order; it is not generated content. A daily started before midnight keeps its puzzle.
+## Apps and stores
+- `docs/APP-STORES.md` — building the iOS and Android apps, what needs your accounts, leaderboards.
+- `docs/BUSINESS.md` — business model recommendation and alternatives.
+- `store/` — icon, screenshots for 6.7" iPhone and Android phones, a 21-second preview capture,
+  and a listing draft. Regenerate with `npm run icons` and `npm run store:assets` (dev server running).
 
 ## Structure
-
 | Area | Files |
 | --- | --- |
-| Puzzle schema and data | `src/core/types.ts`, `src/data/dsl.ts`, `src/data/puzzles.ts` |
-| Pure rules | `src/core/town.ts` (graph), `src/core/rules.ts` (movement, pickup, delivery, freshness, capacity) |
-| Solver and validation | `src/core/solver.ts` (BFS over position, order states, carried-order ages), `src/core/validate.ts`, `src/core/analysis.ts` |
-| Route input | `src/game/editor.ts` (undo/redo, U-turn rule), pointer and keyboard handling in `src/ui/play.ts` |
-| Hints | `src/game/advisor.ts`, run off the main thread by `src/game/advisor.worker.ts` |
-| Rendering and animation | `src/ui/mapView.ts`, `src/ui/art.ts`, `src/ui/ride.ts` |
-| Persistence and daily | `src/game/storage.ts` (versioned, defensive), `src/game/daily.ts` |
-
-Every puzzle is checked by the test suite with the same rules the game uses: it must be valid and readable
-(no crossing streets), solvable, its authored gold must equal the solver optimum, and every rule it uses must
-change the solution (removing that rule changes the optimum or the set of optimal routes).
-`scripts/design-search.ts` is the authoring aid used to try placements on hand-drawn layouts; the chosen
-puzzles are fixed data.
+| Puzzle schema and data | `src/core/types.ts`, `src/data/` (`puzzles.ts` hand-made, `generated.ts` compact codes, `catalog.ts`) |
+| Pure rules | `src/core/town.ts`, `src/core/rules.ts` |
+| Solver and validation | `src/core/solver.ts`, `src/core/validate.ts`, `src/core/analysis.ts` |
+| Route input and hints | `src/game/editor.ts`, `src/game/advisor.ts` (+ worker), `src/ui/play.ts` |
+| Progress and meta | `src/game/storage.ts`, `src/game/daily.ts`, `src/game/meta.ts`, `src/game/residents.ts` |
+| Rendering | `src/ui/mapView.ts`, `src/ui/scene.ts`, `src/ui/sceneryArt.ts`, `src/ui/theme.ts`, `src/ui/village.ts` |
+| Native | `src/platform/native.ts`, `capacitor.config.ts`, `ios/`, `android/` |

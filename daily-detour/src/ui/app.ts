@@ -21,6 +21,9 @@ export class App implements AppServices {
     this.applySettings();
     this.mq?.addEventListener?.('change', () => this.applySettings());
     window.addEventListener('hashchange', () => this.show(hashToRoute(location.hash)));
+    // Browsers only start audio after a gesture.
+    window.addEventListener('pointerdown', () => this.sound.unlock(), { capture: true });
+    window.addEventListener('keydown', () => this.sound.unlock(), { capture: true });
     this.show(hashToRoute(location.hash));
   }
 
@@ -35,6 +38,7 @@ export class App implements AppServices {
 
   private applySettings() {
     this.sound.enabled = this.store.data.settings.sound;
+    this.sound.setMusic(this.store.data.settings.music);
     document.documentElement.classList.toggle('reduce-motion', this.reducedMotion());
   }
 

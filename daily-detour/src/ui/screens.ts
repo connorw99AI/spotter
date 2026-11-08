@@ -4,6 +4,7 @@ import { dailyNumber, dailyPace, dailyPuzzle, lastFreshDaily, msUntilNextUtcDay,
 import { BOOK_IDS, CHAPTERS, getChapter, getPuzzle, puzzleLabel } from '../data/catalog';
 import { PROJECTS, daysLeftInEvent, eventOn, heartsFrom, projectState, runStats } from '../game/meta';
 import { openShareSheet } from './shareSheet';
+import { isNative, setDailyReminder } from '../platform/native';
 import type { AppServices } from './appTypes';
 import { backIcon, basketIcon, bookIcon, calendarIcon, coneIcon, courierSvg, flameIcon, gearIcon, heartIcon, infoIcon, itemIcon, mechanicIcon, shareIcon, C } from './art';
 import { buildTown } from '../core/town';
@@ -351,13 +352,33 @@ export class SettingsScreen implements Screen {
       h('div', { class: 'settings-body' },
         this.seg('motion', 'Motion', s.motion, [['system', 'Match device'], ['reduced', 'Reduced'], ['full', 'Full']], (v) => set({ motion: v })),
         this.seg('speed', 'Courier speed', s.speed, [['relaxed', 'Relaxed'], ['brisk', 'Brisk']], (v) => set({ speed: v })),
-        this.seg('sound', 'Sound', s.sound ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => set({ sound: v === 'on' })),
-        canVibrate ? this.seg('haptics', 'Vibration', s.haptics ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => set({ haptics: v === 'on' })) : null,
+        this.seg('sound', 'Sound effects', s.sound ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => set({ sound: v === 'on' })),
+        this.seg('music', 'Music', s.music ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => set({ music: v === 'on' })),
+        canVibrate || isNative() ? this.seg('haptics', 'Vibration', s.haptics ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => set({ haptics: v === 'on' })) : null,
+        isNative() ? this.reminderControl() : null,
         h('div', { class: 'settings-danger' }, h('h2', {}, 'Saved progress'),
           h('p', { class: 'muted' }, this.app.store.persistent ? 'Progress is saved in this browser only. There are no accounts.' : 'This browser isn’t allowing saves, so progress lasts until you close the tab.'),
           reset),
       ),
     );
+  }
+
+  /** Daily reminder: offered only in the installed app, where local notifications exist. */
+  private reminderControl(): HTMLElement {
+    const s = this.app.store.data.settings;
+    const status = h('p', { class: 'muted', 'aria-live': 'polite' });
+    const apply = async (on: boolean, hour: number) => {
+      const ok = await setDailyReminder(on, hour);
+      this.app.store.updateSettings({ reminder: ok, reminderHour: hour });
+      status.textContent = on && !ok ? 'Notifications are turned off for this app in your phone’s settings.' : ok ? `Reminder set for ${hour}:00 each day.` : 'No reminders.';
+      this.render();
+    };
+    const hours = h('select', { id: 'reminder-hour', 'aria-label': 'Reminder time', onchange: (e: Event) => void apply(true, Number((e.target as HTMLSelectElement).value)) },
+      ...[7, 8, 9, 12, 17, 18, 19, 20].map((hr) => h('option', { value: hr, selected: hr === s.reminderHour }, `${hr}:00`)));
+    return h('div', { class: 'reminder' },
+      this.seg('reminder', 'Daily reminder', s.reminder ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => void apply(v === 'on', s.reminderHour)),
+      s.reminder ? h('label', { class: 'reminder-time', for: 'reminder-hour' }, 'Remind me at ', hours) : null,
+      status);
   }
 
   destroy() { this.root.remove(); }

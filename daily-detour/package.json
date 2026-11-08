@@ -10,11 +10,25 @@
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "analyze": "vite-node scripts/analyze.ts"
+    "analyze": "vite-node scripts/analyze.ts",
+    "content:generate": "bash -c 'for f in grid river ring tri comb; do vite-node scripts/generate.ts $f easy 101 80 pool/pool-$f.jsonl; vite-node scripts/generate.ts $f medium 202 110 pool/pool-$f.jsonl; vite-node scripts/generate.ts $f hard 303 80 pool/pool-$f.jsonl; done'",
+    "content:curate": "vite-node scripts/curate.ts pool",
+    "icons": "node scripts/icons.cjs",
+    "store:assets": "node scripts/store-assets.cjs",
+    "app:sync": "npm run build && cap sync"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.6.0",
+    "@capacitor/cli": "^8.6.0",
+    "@capacitor/ios": "^8.6.0",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@capacitor/app": "^8.1.2",
+    "@capacitor/core": "^8.6.0",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/local-notifications": "^8.3.1"
   }
 }

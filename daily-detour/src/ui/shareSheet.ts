@@ -101,6 +101,7 @@ export async function renderShareCard(i: ShareCardInput): Promise<HTMLCanvasElem
     g.save();
     g.translate(W / 2 - tw / 2 - 30, 1146);
     g.scale(2.2, 2.2);
+    g.fillStyle = '#E0B04A';
     g.fill(new Path2D((flameIcon.match(/d="([^"]+)"/) ?? [])[1] ?? ''));
     g.restore();
     g.fillStyle = '#A67C1E';

@@ -1,0 +1,17 @@
+{
+  "name": "The Daily Detour",
+  "short_name": "Daily Detour",
+  "description": "A cozy delivery-route puzzle set in a miniature neighbourhood. A little journey. A clever detour.",
+  "start_url": "./#town",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FBF4E4",
+  "theme_color": "#FBF4E4",
+  "categories": ["games", "puzzle", "entertainment"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
