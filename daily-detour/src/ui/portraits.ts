@@ -6,15 +6,15 @@ const SKIN = ['#F5D7BD', '#EBC19D', '#D9A47C', '#B97C55', '#8E5A3A', '#6B4128'];
 const HAIR = ['#3B2A20', '#6B4A2E', '#A86F3C', '#D9B26A', '#B8B8B0', '#2B2B33', '#B4512F'];
 const BG = ['#F6E2C2', '#DCEBD3', '#F7DCE4', '#D5EEE7', '#E7E1F2', '#FBEFCF'];
 
-function hash(s: string): number {
+export function hash(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return h >>> 0;
 }
 
-interface Look { skin: string; hair: string; style: number; glasses: boolean; beard: boolean; hat: number; older: boolean }
+export interface Look { skin: string; hair: string; style: number; glasses: boolean; beard: boolean; hat: number; older: boolean }
 
-function look(seed: string): Look {
+export function look(seed: string): Look {
   const h = hash(seed);
   const pick = <T>(xs: T[], k: number) => xs[(h >>> k) % xs.length];
   const older = /^(Old|Grandma|Mr |Mrs |Dr |Pastor|Professor|Captain|Auntie)/.test(seed);
@@ -25,7 +25,7 @@ function look(seed: string): Look {
   };
 }
 
-function face(l: Look, x: number, y: number, s: number): string {
+export function face(l: Look, x: number, y: number, s: number): string {
   const hairBack = l.style === 2 ? `<path d="M-12 -2C-14 10-10 16-8 16H8C10 16 14 10 12-2Z" fill="${l.hair}"/>` : l.style === 3 ? `<circle cx="0" cy="-13" r="6" fill="${l.hair}"/>` : '';
   const hairTop = [
     `<path d="M-11-3C-11-14 11-14 11-3C7-8-7-8-11-3Z" fill="${l.hair}"/>`,
@@ -53,8 +53,10 @@ function face(l: Look, x: number, y: number, s: number): string {
 }
 
 /** Pip, the courier: matches the bike sprite (green helmet, terracotta scarf). */
+export const PIP_LOOK: Look = { skin: '#F1D7B8', hair: '#6B4A2E', style: 0, glasses: false, beard: false, hat: 0, older: false };
+
 function pip(): string {
-  const l: Look = { skin: '#F1D7B8', hair: '#6B4A2E', style: 0, glasses: false, beard: false, hat: 0, older: false };
+  const l = PIP_LOOK;
   return `${face(l, 0, 1, 1)}<path d="M-12-4C-12-16 12-16 12-4Z" fill="#2F5D46"/><path d="M10-5h6" stroke="#2F5D46" stroke-width="2.4" stroke-linecap="round"/><path d="M-8 14C-3 17 3 17 8 14" stroke="#B85C38" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
 }
 
