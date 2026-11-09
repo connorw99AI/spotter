@@ -801,3 +801,11 @@ html.reduce-motion .play.gold-ready .map-wrap::before { animation: none; }
 @keyframes vBees { 33% { translate: 2px -2px; } 66% { translate: -2px 1px; } }
 .bird { animation: vPeck 2.4s ease-in-out infinite; transform-box: fill-box; transform-origin: center bottom; }
 .pup { animation: vBob 1.4s ease-in-out infinite; }
+
+/* ─────────────── move limit and failed rounds ─────────────── */
+.stats .limit { color: var(--muted); font-weight: 700; }
+.stats .limit.over { color: var(--paper); background: var(--terracotta); border-radius: 10px; padding: 1px 8px; }
+.btn-ride.too-long { color: var(--terracotta-deep); border-color: var(--terracotta); font-size: 15px; white-space: nowrap; }
+.stamp-fail { color: #8E4127; border-color: #B85C38; transform: rotate(-4deg); }
+.stamp-fail .stamp-medal { font-size: 34px; }
+.docket-fail { border-top-color: var(--terracotta); }

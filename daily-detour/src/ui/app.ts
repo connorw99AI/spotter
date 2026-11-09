@@ -1,4 +1,5 @@
 import type { PuzzleDef } from '../core/types';
+import { medalFor, thresholds } from '../core/medals';
 import { getPuzzle, nextInBook } from '../data/catalog';
 import { dailyPuzzleId } from '../game/daily';
 import { SaveStore } from '../game/storage';
@@ -20,6 +21,11 @@ export class App implements AppServices {
 
   constructor(private readonly host: HTMLElement) {
     this.applySettings();
+    // Stamps follow the current medal rules, worked out from each record's best moves.
+    this.store.regrade((id, rev, moves) => {
+      const p = getPuzzle(id);
+      return p && p.rev === rev ? medalFor(moves, thresholds(p.gold)) : undefined;
+    });
     applyPipStyle(this);
     this.mq?.addEventListener?.('change', () => this.applySettings());
     window.addEventListener('hashchange', () => this.show(hashToRoute(location.hash)));

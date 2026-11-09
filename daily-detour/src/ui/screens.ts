@@ -497,7 +497,7 @@ export class HowScreen implements Screen {
           h('li', {}, h('b', {}, 'Keyboard:'), ' arrow keys ride towards a corner (Home, Page Up, End and Page Down for diagonals), Space picks between corners, Enter rides there, Backspace or Ctrl+Z undoes.'),
         ),
         h('h2', {}, 'Stamps'),
-        h('p', {}, 'Any complete round earns bronze. Silver is within 15% of the shortest route (at least two moves of slack). Gold is the shortest route there is. Hints are counted on your result.'),
+        h('p', {}, 'Gold is the shortest route there is: every route’s gold has been checked against all its rules, roadworks and one-way streets included. Silver is one move over gold, and bronze two or three over. A round any longer than that doesn’t earn a stamp, and the map shows the limit (“Max”) as you plan. Hints are counted on your result.'),
         h('h2', {}, 'Coins and the village shop'),
         h('p', {}, 'Each route pays coins the first time you deliver it: 10 for bronze, 20 for silver, 30 for gold, and the difference if you improve later. Dailies pay 15, 25 or 40, and neighbours’ special deliveries up to 60. Replays don’t pay twice.'),
         h('p', {}, 'Spend coins in the village shop on decorations, Pip’s look, map scenery and new neighbours. The first hint on a route is free; the next objective costs 10 coins and the next step 15. If your route can no longer finish, the way back is always free. Coins can’t be bought with money.'),

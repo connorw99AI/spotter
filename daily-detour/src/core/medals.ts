@@ -3,20 +3,24 @@ export type Medal = 'gold' | 'silver' | 'bronze';
 export interface MedalThresholds {
   gold: number;
   silver: number;
+  /** The most moves a delivery can take and still count. */
+  bronze: number;
 }
 
 /**
- * Gold: the optimal route. Silver: within 15% of optimal, never less than 2 moves of slack
- * (most towns are grids where a detour costs moves in pairs). Bronze: any valid delivery.
+ * Gold: the shortest route there is. Silver: one move over. Bronze: two or
+ * three over. Anything longer doesn't earn a stamp.
  */
 export function thresholds(optimal: number): MedalThresholds {
-  return { gold: optimal, silver: optimal + Math.max(2, Math.round(optimal * 0.15)) };
+  return { gold: optimal, silver: optimal + 1, bronze: optimal + 3 };
 }
 
-export function medalFor(moves: number, t: MedalThresholds): Medal {
+/** The stamp a delivery of this many moves earns, or null if it took too long. */
+export function medalFor(moves: number, t: MedalThresholds): Medal | null {
   if (moves <= t.gold) return 'gold';
   if (moves <= t.silver) return 'silver';
-  return 'bronze';
+  if (moves <= t.bronze) return 'bronze';
+  return null;
 }
 
 const rank: Record<Medal, number> = { gold: 3, silver: 2, bronze: 1 };

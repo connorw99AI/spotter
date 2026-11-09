@@ -21,6 +21,9 @@ collect orders, deliver them under a few simple rules, and ride home.
   keepsake in the village when finished.
 - **Hints** in three stages, computed from the player's own route, with an explicit undo when
   a route can no longer finish.
+- **Stamps:** gold is the fewest moves the map's rules allow, silver one over, bronze two or three
+  over; anything longer earns no stamp. Every map's gold is checked by `tests/gold-audit.test.ts`,
+  an exhaustive search over the game's own move rules that doesn't rely on the solver.
 - **Your village:** deliveries earn hearts (bronze 1, silver 2, gold 3) that restore 12 corners
   of the courier's home village, each with a note from the resident who asked.
 - **Coins and the village shop:** each route also pays coins the first time (more for gold),

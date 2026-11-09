@@ -1,4 +1,4 @@
-import { medalFor, medalName, thresholds, type Medal } from '../core/medals';
+import { medalFor, medalName, thresholds, type Medal, type MedalThresholds } from '../core/medals';
 import { allDelivered, carriedCount, freshLeft, isComplete, type GameState, type StepEvent } from '../core/rules';
 import { buildTown, streetNeighbours, type Town } from '../core/town';
 import type { NodeId, PuzzleDef, TipDef } from '../core/types';
@@ -65,6 +65,9 @@ function climb(s: GameState, kind: 'pickup' | 'deliver'): number {
   return Math.max(0, n - 1);
 }
 
+/** The button that takes a route back to its last good point. */
+const undoLabel = (k: number) => (k === 0 ? 'Start again' : `Undo to move ${k}`);
+
 export class PlayScreen {
   readonly root: HTMLElement;
   private alive = true;
@@ -72,7 +75,7 @@ export class PlayScreen {
   private readonly editor: RouteEditor;
   private readonly map: MapView;
   private readonly theme: Theme;
-  private readonly t: { gold: number; silver: number };
+  private readonly t: MedalThresholds;
   private readonly draftKey: string;
   private hints = 0;
   private hintLog: HintEntry[] = [];
@@ -96,6 +99,8 @@ export class PlayScreen {
   private wasGold: boolean | null = null;
   private coachMsg: Message | null = null;
   private coinsGained = 0;
+  /** The route can no longer finish within the most moves a stamp allows. */
+  private overLimit = false;
   private coachTimer = 0;
 
   // DOM
@@ -479,8 +484,25 @@ export class PlayScreen {
         this.say({
           text: describeDoom(this.town, a.reason),
           tone: 'warn',
-          action: { label: `Undo to move ${k}`, run: () => this.keepMoves(k) },
+          action: { label: undoLabel(k), run: () => this.keepMoves(k) },
         });
+      } else if (a.moves + (a.remaining ?? 0) > this.t.bronze) {
+        // Finishable, but not within the most moves a stamp allows: say so once, with the way back.
+        if (!this.overLimit) {
+          this.overLimit = true;
+          const k = a.goldUndoTo;
+          this.say({
+            text: a.status === 'complete'
+              ? `Complete, but ${a.moves} moves is over the ${this.t.bronze}-move limit for a stamp.`
+              : `Even the quickest finish from here takes ${a.moves + (a.remaining ?? 0)} moves, over the ${this.t.bronze}-move limit for a stamp.`,
+            tone: 'warn',
+            action: k !== undefined ? { label: undoLabel(k), run: () => this.keepMoves(k) } : undefined,
+          });
+          this.renderStats();
+        }
+      } else if (this.overLimit) {
+        this.overLimit = false;
+        this.renderStats();
       }
     }), 160);
   }
@@ -535,16 +557,16 @@ export class PlayScreen {
     if (a.status === 'complete') {
       text = this.editor.moves <= this.t.gold
         ? 'Your route is already complete and as short as it gets. Press Deliver!'
-        : `Your route is complete at ${this.editor.moves} moves. Gold is ${this.t.gold}.`;
+        : `Your route is complete at ${this.editor.moves} moves. Gold is ${this.t.gold}.${this.editor.moves > this.t.bronze ? ` That's over the ${this.t.bronze}-move limit, so it wouldn't earn a stamp.` : ''}`;
       if (a.goldUndoTo !== undefined && this.editor.moves > this.t.gold) {
         const k = a.goldUndoTo;
         text += ` The first ${k} ${k === 1 ? 'move is' : 'moves are'} still on a gold route.`;
-        action = { label: `Undo to move ${k}`, run: () => this.keepMoves(k) };
+        action = { label: undoLabel(k), run: () => this.keepMoves(k) };
       }
     } else if (a.status === 'doomed') {
       const k = a.undoTo ?? 0;
       text = `${describeDoom(this.town, a.reason)} To recover, undo back to move ${k}.`;
-      action = { label: `Undo to move ${k}`, run: () => this.keepMoves(k) };
+      action = { label: undoLabel(k), run: () => this.keepMoves(k) };
     } else if (stage === 2) {
       if (!spendCoins(this.app, cost)) return;
       text = describeObjective(this.town, a.next!);
@@ -554,7 +576,7 @@ export class PlayScreen {
       if (a.goldUndoTo !== undefined) {
         const k = a.goldUndoTo;
         text += ` Gold needs a different start: your first ${k} ${k === 1 ? 'move is' : 'moves are'} on a gold route.`;
-        action = { label: `Undo to move ${k}`, run: () => this.keepMoves(k) };
+        action = { label: undoLabel(k), run: () => this.keepMoves(k) };
       }
     } else {
       if (!spendCoins(this.app, cost)) return;
@@ -671,6 +693,7 @@ export class PlayScreen {
   private complete(moves: number) {
     const p = this.opts.puzzle;
     const medal = medalFor(moves, this.t);
+    if (!medal) { this.showFail(moves); return; }
     const heartsBefore = heartCount(this.app);
     const chapter = chapterOf(p);
     const before = chapter ? chapterDelivered(this.app, chapter) : 0;
@@ -712,8 +735,8 @@ export class PlayScreen {
     const note = medal === 'gold'
       ? (moves === this.t.gold ? 'The shortest route there is.' : 'Gold!')
       : medal === 'silver'
-        ? `Gold is ${this.t.gold} moves — ${moves - this.t.gold} to shave off.`
-        : `A fine delivery. Silver is ${this.t.silver} moves or fewer, gold ${this.t.gold}.`;
+        ? `Gold is ${this.t.gold} moves: one to shave off.`
+        : `Delivered. Silver is ${this.t.silver} moves and gold ${this.t.gold}.`;
     const next = this.opts.mode === 'practice' ? this.app.nextPuzzle(p) : undefined;
     const primary = neighbourOf(p.id)
       ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'village', tab: 'neighbours' }) }, 'Back to Meadow Lane')
@@ -742,7 +765,8 @@ export class PlayScreen {
       h('dl', { class: 'docket-facts' },
         h('div', {}, h('dt', {}, 'Your route'), h('dd', {}, `${moves}`)),
         h('div', {}, h('dt', {}, 'Gold'), h('dd', {}, `${this.t.gold}`)),
-        h('div', {}, h('dt', {}, 'Silver'), h('dd', {}, `≤ ${this.t.silver}`)),
+        h('div', {}, h('dt', {}, 'Silver'), h('dd', {}, `${this.t.silver}`)),
+        h('div', {}, h('dt', {}, 'Bronze'), h('dd', {}, `≤ ${this.t.bronze}`)),
         h('div', {}, h('dt', {}, 'Personal best'), h('dd', {}, best)),
         h('div', {}, h('dt', {}, 'Hints'), h('dd', {}, this.hints === 0 ? 'None' : String(this.hints))),
       ),
@@ -787,6 +811,44 @@ export class PlayScreen {
     this.map.svg.focus({ preventScroll: true });
   }
 
+  /** A finished round that took too long: no stamp, nothing saved, the route left as it was. */
+  private showFail(moves: number) {
+    const p = this.opts.puzzle;
+    const label = this.opts.mode === 'daily' ? `Daily #${dailyNumber(this.opts.dateKey!)}` : puzzleLabel(p);
+    this.app.sound.play('blocked');
+    this.app.haptics([30, 40, 30]);
+    const card = h('div', { class: 'docket docket-fail', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'docket-title' },
+      h('p', { class: 'docket-kicker' }, `${label}: too long to count`),
+      h('h2', { id: 'docket-title' }, p.title),
+      h('div', { class: 'stamp stamp-fail', 'aria-label': 'No stamp' }, h('span', { class: 'stamp-medal' }, 'Too long'), h('span', { class: 'stamp-moves' }, `${moves} moves`)),
+      h('p', { class: 'docket-note' }, `A stamp needs ${this.t.bronze} moves or fewer here, and this round took ${moves}.`),
+      h('dl', { class: 'docket-facts' },
+        h('div', {}, h('dt', {}, 'Gold'), h('dd', {}, `${this.t.gold}`)),
+        h('div', {}, h('dt', {}, 'Silver'), h('dd', {}, `${this.t.silver}`)),
+        h('div', {}, h('dt', {}, 'Bronze'), h('dd', {}, `≤ ${this.t.bronze}`)),
+        h('div', {}, h('dt', {}, 'Your route'), h('dd', {}, `${moves}`)),
+      ),
+      h('p', { class: 'muted' }, 'Nothing is saved for this round. Your route is still on the map: undo back to where it went long, or start again.'),
+      h('div', { class: 'docket-actions' },
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => this.tryAgain() }, 'Start again'),
+        h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.closeFail() }, 'Back to my route')),
+    );
+    this.docket.replaceChildren(card);
+    this.docket.hidden = false;
+    this.root.classList.add('docket-open');
+    (card.querySelector('.btn-primary') as HTMLElement).focus({ preventScroll: true });
+  }
+
+  private closeFail() {
+    this.docket.hidden = true;
+    this.root.classList.remove('docket-open');
+    this.map.hideCourier();
+    this.map.clearTrail();
+    this.renderAll();
+    this.say({ text: `Gold is ${this.t.gold} moves and a stamp needs ${this.t.bronze} or fewer. Undo to where the route went long.`, tone: 'warn' });
+    this.map.svg.focus({ preventScroll: true });
+  }
+
   private tryAgain() {
     this.docket.hidden = true;
     this.root.classList.remove('docket-open');
@@ -814,7 +876,7 @@ export class PlayScreen {
     // While the route cannot finish, keep the way back on screen whatever else is said.
     const doom = this.lastAdvice?.key === this.routeKey() && this.lastAdvice.advice.status === 'doomed' ? this.lastAdvice.advice : null;
     const action = m.action ?? (doom && doom.undoTo !== undefined && !this.ride
-      ? { label: `Undo to move ${doom.undoTo}`, run: () => this.keepMoves(doom.undoTo!) } : undefined);
+      ? { label: undoLabel(doom.undoTo), run: () => this.keepMoves(doom.undoTo!) } : undefined);
     // Passing news (info, a good step, a warning) fades after a moment so the
     // town stays clear; tips and anything with a button stay until replaced.
     const sticky = !!action || m.tone === 'tip';
@@ -915,6 +977,7 @@ export class PlayScreen {
     setKids(this.statsEl,
       h('span', { class: 'moves' }, h('b', {}, String(this.editor.moves)), this.editor.moves === 1 ? ' move' : ' moves'),
       h('span', { class: `target${this.onGold() ? ' on-gold' : ''}` }, this.onGold() ? `Gold ${this.t.gold} ✓` : `Gold ${this.t.gold}`),
+      h('span', { class: `limit${this.overLimit || this.editor.moves > this.t.bronze ? ' over' : ''}`, title: `A stamp needs ${this.t.bronze} moves or fewer` }, `Max ${this.t.bronze}`),
       rec ? h('span', { class: 'best' }, `Best ${rec.bestMoves}`) : null,
       this.hints > 0 ? h('span', { class: 'hint-count' }, `${this.hints} ${this.hints === 1 ? 'hint' : 'hints'}`) : null,
       rec?.bestRoute ? h('button', { class: `ghost-toggle${this.showGhost ? ' on' : ''}`, type: 'button', 'aria-pressed': String(this.showGhost), onclick: () => { this.showGhost = !this.showGhost; this.renderGhost(); this.renderStats(); } }, this.showGhost ? 'Hide best route' : 'Show best route') : null,
@@ -932,8 +995,9 @@ export class PlayScreen {
     const gold = this.onGold();
     const again = this.deliveredRoute === this.routeKey();
     this.rideBtn.disabled = riding || this.editor.moves === 0;
-    this.rideBtn.className = `btn btn-ride${complete ? ' btn-primary ready' : ''}${gold && !again ? ' gold' : ''}`;
-    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (again ? 'Ride again' : 'Deliver') : 'Preview',
+    const tooLong = complete && this.editor.moves > this.t.bronze;
+    this.rideBtn.className = `btn btn-ride${complete && !tooLong ? ' btn-primary ready' : ''}${tooLong ? ' too-long' : ''}${gold && !again ? ' gold' : ''}`;
+    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (again ? 'Ride again' : tooLong ? 'Deliver (too long)' : 'Deliver') : 'Preview',
       gold && !again ? h('span', { class: 'gold-mark' }, 'gold') : '');
     this.rideBtn.setAttribute('aria-label', complete ? `Deliver: send the courier along your route${gold ? ' (a gold route)' : ''}` : 'Preview the route so far');
     // The whole screen catches the light when a finished route is a gold one.

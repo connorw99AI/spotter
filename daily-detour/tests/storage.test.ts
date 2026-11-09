@@ -59,6 +59,17 @@ describe('saved progress', () => {
     expect(parseSave(JSON.stringify({ version: 1 }))).toMatchObject({ goldRun: 0, bestGoldRun: 0 });
   });
 
+  it('re-grades saved stamps from best moves, keeping bronze for rounds that no longer qualify', () => {
+    const s = new SaveStore(new MemoryStore());
+    s.recordCompletion('p', 1, 12, 'silver', 0); // gold 10: now bronze
+    s.recordCompletion('q', 1, 11, 'silver', 0); // gold 10: still silver
+    s.recordCompletion('r', 1, 30, 'bronze', 0); // gold 10: too long now, kept as bronze
+    s.recordDaily('2026-11-01', { puzzleId: 'p', rev: 1, moves: 10, medal: 'silver', hints: 0 });
+    s.regrade((id, _rev, moves) => (id === 'other' ? undefined : moves <= 10 ? 'gold' : moves <= 11 ? 'silver' : moves <= 13 ? 'bronze' : null));
+    expect([s.levelRecord('p', 1)!.bestMedal, s.levelRecord('q', 1)!.bestMedal, s.levelRecord('r', 1)!.bestMedal]).toEqual(['bronze', 'silver', 'bronze']);
+    expect(s.data.daily['2026-11-01'].medal).toBe('gold');
+  });
+
   it('ignores records from an older puzzle revision', () => {
     const s = new SaveStore(new MemoryStore());
     s.recordCompletion('p', 1, 14, 'gold', 0);

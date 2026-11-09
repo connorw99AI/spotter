@@ -225,6 +225,28 @@ export class SaveStore {
     return { run: this.data.goldRun, best: this.data.bestGoldRun, newBest: this.data.bestGoldRun > before };
   }
 
+  /**
+   * Re-grade saved stamps when the medal rules change: each record's medal is
+   * worked out again from its best moves. A delivery that no longer earns a
+   * stamp keeps bronze, so nobody loses a route they had finished.
+   */
+  regrade(grade: (puzzleId: string, rev: number, moves: number) => Medal | null | undefined) {
+    let changed = false;
+    for (const [id, r] of Object.entries(this.data.levels)) {
+      const g = grade(id, r.rev, r.bestMoves);
+      if (g === undefined) continue;
+      const m = g ?? 'bronze';
+      if (m !== r.bestMedal) { r.bestMedal = m; changed = true; }
+    }
+    for (const r of Object.values(this.data.daily)) {
+      const g = grade(r.puzzleId, r.rev, r.moves);
+      if (g === undefined) continue;
+      const m = g ?? 'bronze';
+      if (m !== r.medal) { r.medal = m; changed = true; }
+    }
+    if (changed) this.flush();
+  }
+
   /** Record coins spent (the caller checks the balance first). */
   spend(coins: number) {
     if (!(coins > 0)) return;

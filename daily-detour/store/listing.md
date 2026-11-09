@@ -17,7 +17,7 @@ Every route is a small puzzle. Ice cream melts if you dawdle. Roadworks close th
 
 - A new daily route for everyone, gentle on Mondays and trickiest at the weekend
 - 140 routes in the route book, from first lessons to tricky rounds
-- Gold, silver and bronze stamps, with the gold target always shown
+- Gold for the shortest route, silver one move over, bronze two or three over, with the gold target and move limit always shown
 - Each chapter adds a new idea: opening hours, garden gates, cobbles for fragile orders
 - The game names your clever detours, and shows your best route as a ghost to beat
 - Meet the neighbours: portraits, thank-you notes and a story told in letters
