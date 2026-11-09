@@ -116,31 +116,51 @@ function crateArt(kind: PipStyle['crate']): string {
 
 export function courierSvg(P: PipStyle = pipStyle): string {
   const wheel = (x: number) => `<g transform="translate(${x} 8)">
-      <circle r="9.6" fill="#FFFAF0" fill-opacity=".35" stroke="#23352B" stroke-width="3.2"/>
-      <g class="spokes"><path d="M-8 0H8M0-8V8M-5.6-5.6l11.2 11.2M-5.6 5.6 5.6-5.6" stroke="#23352B" stroke-width="1" opacity=".55"/></g>
-      <circle r="2.2" fill="#23352B"/>
+      <circle r="9.6" fill="#FFFAF0" fill-opacity=".3" stroke="#23352B" stroke-width="3.2"/>
+      <circle r="7.6" fill="none" stroke="#A9B2AE" stroke-width="1"/>
+      <g class="spokes"><path d="M-7 0H7M0-7V7M-5-5l10 10M-5 5 5-5" stroke="#5E6A66" stroke-width=".8"/></g>
+      <circle r="2.2" fill="#3D4A43"/><circle r=".9" fill="#C9D1CE"/>
+      <path d="M-8.4-3.6a9.6 9.6 0 0 1 5-5" stroke="#FFFFFF" stroke-width="1" opacity=".35" stroke-linecap="round"/>
     </g>`;
   return `<g class="courier-body">
     <ellipse cx="2" cy="18" rx="30" ry="5" fill="#23352B" opacity=".2"/>
     <g class="speed"><path d="M-40-6h12M-44 2h14M-38 10h9" stroke="#FFFAF0" stroke-width="2.6" stroke-linecap="round" opacity=".9"/></g>
     ${wheel(-18)}${wheel(18)}
+    <path d="M-29.4 5.4A11.6 11.6 0 0 1-9 -1.8M8.4 -0.6A11.6 11.6 0 0 1 29.4 5.4" fill="none" stroke="${P.frame}" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M-18 5.8-4 5.4M-18 10.2-4 10.6" stroke="#3D4A43" stroke-width=".8" opacity=".8"/>
     <path d="M-18 8-4 8 7-6M-4 8-9-7M18 8 10-10" fill="none" stroke="${P.frame}" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M-4 8l2 3" stroke="#23352B" stroke-width="2" stroke-linecap="round"/>
-    <path d="M-14-8h9" stroke="#23352B" stroke-width="3.4" stroke-linecap="round"/>
+    <path d="M-16.4 7.2-4.6 7.2M-3.4 6.6 6-5.4" fill="none" stroke="#FFFFFF" stroke-width=".9" opacity=".35" stroke-linecap="round"/>
+    <circle cx="-4" cy="8" r="3" fill="none" stroke="#3D4A43" stroke-width="1.4"/>
+    <path d="M-4 8l3.4 3.4M-4 8l-3.4-3.4" stroke="#23352B" stroke-width="1.4" stroke-linecap="round"/>
+    <path d="M-15-8.6q4.6-1.8 10 0l-.6 1.8q-4.6-1-8.8 0Z" fill="#5C4A3A" stroke="#3B2A20" stroke-width=".6"/>
     <g transform="translate(21 -9)">${crateArt(P.crate)}</g>
     <path d="M7-11h7" stroke="#23352B" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="13.6" cy="-13.4" r="1.6" fill="#E0B04A" stroke="#A67C1E" stroke-width=".5"/>
     <g class="rider">
       <path class="scarf" d="M1-21C-5-21-9-19-12-16" fill="none" stroke="${P.scarf}" stroke-width="3" stroke-linecap="round"/>
-      <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="${P.jacket}" stroke-width="7.4" stroke-linecap="round"/>
-      <path d="M-8-6 0 1" stroke="#2F5D46" stroke-width="5" stroke-linecap="round"/>
-      <path d="M1-19 9-12" stroke="#F1D7B8" stroke-width="3.4" stroke-linecap="round"/>
+      <path d="M-8-6-3 1-.6 7" fill="none" stroke="#24473A" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx=".4" cy="7.6" rx="2.6" ry="1.4" fill="#2B2B33"/>
+      <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="${P.jacket}" stroke-width="7.6" stroke-linecap="round"/>
+      <path d="M-7.6-5.4C-6-14 0-19.6 5.2-19.4" fill="none" stroke="#23352B" stroke-width="2.6" stroke-linecap="round" opacity=".14"/>
+      <path d="M-9.6-9C-9-15-5-19.6-1-21" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" opacity=".3"/>
+      <path d="M-8-6 1.6-1.6 1 5.6" fill="none" stroke="#2F5D46" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <ellipse cx="2.4" cy="6.6" rx="2.8" ry="1.5" fill="#2B2B33"/><path d="M1 6h2.6" stroke="#FFFFFF" stroke-width=".5" opacity=".4"/>
+      <path d="M1.6-19.4 6.6-14.6" stroke="${P.jacket}" stroke-width="4" stroke-linecap="round"/>
+      <path d="M6.4-14.4 9.6-11.6" stroke="#F1D7B8" stroke-width="3" stroke-linecap="round"/>
+      <path d="M3.4-23.6v2" stroke="#E2C2A2" stroke-width="2.6"/>
       <circle cx="5" cy="-29" r="6.6" fill="#F1D7B8"/>
-      <circle cx="8.4" cy="-29.4" r=".9" fill="#23352B"/>
-      <path d="M7.2-26c1 .8 2.2.8 3 0" fill="none" stroke="#8E4127" stroke-width=".9" stroke-linecap="round"/>
+      <path d="M8.4-34.4a6.6 6.6 0 0 1 2.6 7.6 8 8 0 0 0-2.6-7.6Z" fill="#23352B" opacity=".08"/>
+      <path d="M-1.4-30.6q-2.2 3.4.6 6.6q1-3 .6-6.6Z" fill="#6B4A2E"/>
+      <circle cx="1.8" cy="-28.4" r="1.5" fill="#E8C4A4"/>
+      <circle cx="8.4" cy="-29.6" r=".95" fill="#23352B"/><circle cx="8.7" cy="-29.9" r=".3" fill="#FFFFFF"/>
+      <circle cx="8.8" cy="-26.6" r="1.5" fill="#E77D9C" opacity=".45"/>
+      <path d="M10.8-28.6l1 1.4-1.2.3" fill="none" stroke="#D9A88A" stroke-width=".7" stroke-linecap="round"/>
+      <path d="M7.2-25.6c1 .8 2.2.8 3 0" fill="none" stroke="#8E4127" stroke-width=".9" stroke-linecap="round"/>
       <path d="M-1.8-30.4C-1.8-38 11.6-38 11.6-30.4Z" fill="${P.helmet}"/>
+      <path d="M2.6-34.8 3-31.2M5.8-35.6 6-31.4M8.8-34.6 8.6-31.2" stroke="#23352B" stroke-width=".7" opacity=".22"/>
       ${P.dots ? '<circle cx="1.6" cy="-33" r="1.2" fill="#FFFAF0"/><circle cx="5.6" cy="-35.4" r="1.2" fill="#FFFAF0"/><circle cx="8.8" cy="-32.4" r="1.2" fill="#FFFAF0"/>' : ''}
       <path d="M9.8-31.2h5.4" stroke="${P.helmet}" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M1-35.6c2-1.2 5-1.4 7-.4" fill="none" stroke="#FFFAF0" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
+      <path d="M1.2-34c1.8-1 4.6-1.2 6.4-.4" fill="none" stroke="#FFFAF0" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>
     </g>
   </g>`;
 }

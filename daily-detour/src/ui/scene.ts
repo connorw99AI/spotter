@@ -25,6 +25,20 @@ const KERB = { street: 36, lane: 24, bridge: 42 };
  * countryside is furnished (the visible screen, which on a phone is far taller
  * than the town).
  */
+/** Smooth value noise in [0, 1], seeded, for grouping trees into woods and meadows. */
+function valueNoise(seed: number) {
+  const h = (i: number, j: number) => {
+    const v = Math.sin(i * 127.1 + j * 311.7 + seed * 74.7) * 43758.5453;
+    return v - Math.floor(v);
+  };
+  const smooth = (t: number) => t * t * (3 - 2 * t);
+  return (x: number, y: number) => {
+    const i = Math.floor(x), j = Math.floor(y), fx = smooth(x - i), fy = smooth(y - j);
+    const a = h(i, j), b = h(i + 1, j), c = h(i, j + 1), d = h(i + 1, j + 1);
+    return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+  };
+}
+
 export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: box.x - 240, y: box.y - 240, w: box.w + 480, h: box.h + 480 }): string {
   const rnd = seeded(town.def.id + ':scene');
   const lines = streetPolylines(town);
@@ -57,6 +71,14 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
   let s = defs(theme, big, box);
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="${theme.lawn}"/>`;
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-tufts)"/>`;
+  // Soft light and shade across the grass, so the ground isn't one flat colour.
+  const seedN = [...town.def.id].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 9973, 7);
+  const noise = valueNoise(seedN);
+  const lrnd = seeded(town.def.id + ':light');
+  for (let i = 0; i < 16; i++) {
+    const x = big.x + lrnd() * big.w, y = big.y + lrnd() * big.h, r = 90 + lrnd() * 170;
+    s += `<ellipse cx="${f1(x)}" cy="${f1(y)}" rx="${f1(r)}" ry="${f1(r * (0.55 + lrnd() * 0.3))}" fill="url(#${i % 3 === 0 ? 'm-shade' : 'm-glow'})"/>`;
+  }
 
   // Patchwork fields out in the countryside, hedged and gently askew, so the
   // world past the town reads as farmland rather than one carpet of trees.
@@ -93,7 +115,7 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
 
   s += blocksSvg(town, blocks, theme, rnd);
   s += waterSvg(town, theme, rnd);
-  s += streetsSvg(town);
+  s += streetsSvg(town, theme);
 
   // Objects, painted back to front.
   const items: { p: Pt; svg: string }[] = [];
@@ -106,27 +128,31 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
   const locs: NodeId[] = [town.depot, ...town.def.shops.map((x) => x.node), ...town.def.houses.map((x) => x.node)];
   for (const id of locs) {
     const p = nodePt(town, id);
-    let best: Pt | null = null;
-    let bestScore = -Infinity;
-    for (let a = 0; a < 24; a++) {
-      const ang = (a / 24) * Math.PI * 2;
-      for (const r of [50, 58, 66]) {
-        const q = { x: p.x + Math.cos(ang) * r, y: p.y + Math.sin(ang) * r };
-        const cl = clearance(q, lines);
-        if (cl < 36) continue;
-        if (!free(q, 22)) continue;
-        if (town.def.nodes.some((n) => n.id !== id && dist(nodePt(town, n.id), q) < 50)) continue;
-        if (nearWater(q, 18)) continue;
-        const score = cl * 0.35 - r * 0.6 - Math.sin(ang) * 12;
-        if (score > bestScore) { bestScore = score; best = q; }
+    // Try the full-size building first; fall back to a smaller one where the block is tight.
+    for (const [sc, radii, minClear, room] of [[1.18, [56, 64, 72], 40, 27], [0.92, [50, 58, 66], 36, 22]] as [number, number[], number, number][]) {
+      let best: Pt | null = null;
+      let bestScore = -Infinity;
+      for (let a = 0; a < 24; a++) {
+        const ang = (a / 24) * Math.PI * 2;
+        for (const r of radii) {
+          const q = { x: p.x + Math.cos(ang) * r, y: p.y + Math.sin(ang) * r };
+          const cl = clearance(q, lines);
+          if (cl < minClear) continue;
+          if (!free(q, room)) continue;
+          if (town.def.nodes.some((n) => n.id !== id && dist(nodePt(town, n.id), q) < 50 + (sc > 1 ? 6 : 0))) continue;
+          if (nearWater(q, room - 4)) continue;
+          const score = cl * 0.35 - r * 0.6 - Math.sin(ang) * 12;
+          if (score > bestScore) { bestScore = score; best = q; }
+        }
       }
+      if (!best) continue;
+      taken.push({ p: best, r: room + 2 });
+      const shop = town.shopKind.get(id);
+      const svg = id === town.depot ? depotArt(theme.lit, sc) : shop ? shopArt(shop, theme.lit, sc) : houseArt(randomHouseLook(rnd, theme.lit), sc);
+      items.push({ p: best, svg });
+      glows.push(best);
+      break;
     }
-    if (!best) continue;
-    taken.push({ p: best, r: 24 });
-    const shop = town.shopKind.get(id);
-    const svg = id === town.depot ? depotArt(theme.lit, 0.86) : shop ? shopArt(shop, theme.lit, 0.86) : houseArt(randomHouseLook(rnd, theme.lit), 0.86);
-    items.push({ p: best, svg });
-    glows.push(best);
   }
 
   // Street lamps at busy corners.
@@ -158,7 +184,7 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
     const c = b.face.centroid;
     const cl = clearance(c, lines);
     if (b.kind === 'plaza' && cl >= 38 && roomAt(c, 20, 38)) place(c, 20, fountainArt(theme));
-    else if (b.kind === 'garden' && cl >= 36 && roomAt(c, 16, 36)) place({ x: c.x, y: c.y + 4 }, 16, houseArt(randomHouseLook(rnd, theme.lit), cl > 46 ? 0.8 : 0.66), true);
+    else if (b.kind === 'garden' && cl >= 36 && roomAt(c, 16, 36)) place({ x: c.x, y: c.y + 4 }, 16, houseArt(randomHouseLook(rnd, theme.lit), cl > 48 ? 0.98 : cl > 42 ? 0.84 : 0.7), true);
     else if (b.kind === 'meadow' && cl >= 32 && roomAt(c, 14, 32)) place(c, 14, treeArt(theme, Math.floor(rnd() * 8), 1.15));
     else if (b.kind === 'allotment' && cl >= 34 && roomAt(c, 12, 34)) place(c, 12, shedArt());
     // Corners: walk each vertex towards the centre until it clears the hedge.
@@ -187,7 +213,14 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
       const b = blockAt(p);
       const where = b?.kind ?? 'outer';
       let kind: 'tree' | 'pine' | 'bush' | 'flowers' | 'house' | 'bench' | 'shed' | null = null;
-      if (where === 'outer') kind = roll < 0.3 ? 'tree' : roll < 0.42 ? 'pine' : roll < 0.52 ? 'bush' : roll < 0.56 ? 'flowers' : roll < 0.6 ? 'house' : null;
+      if (where === 'outer') {
+        const n = noise(p.x / 170, p.y / 170);
+        kind = n > 0.6
+          ? (roll < 0.5 ? 'tree' : roll < 0.78 ? 'pine' : roll < 0.86 ? 'bush' : null)              // woods
+          : n < 0.36
+            ? (roll < 0.1 ? 'flowers' : roll < 0.14 ? 'bush' : roll < 0.16 ? 'tree' : null)          // open meadow
+            : (roll < 0.18 ? 'tree' : roll < 0.24 ? 'pine' : roll < 0.32 ? 'bush' : roll < 0.37 ? 'flowers' : roll < 0.41 ? 'house' : null);
+      }
       else if (where === 'garden') kind = roll < 0.16 ? 'house' : roll < 0.34 ? 'tree' : roll < 0.44 ? 'bush' : roll < 0.54 ? 'flowers' : null;
       else if (where === 'meadow') kind = roll < 0.18 ? 'flowers' : roll < 0.38 ? 'tree' : roll < 0.46 ? 'bush' : null;
       else if (where === 'allotment') kind = roll < 0.04 ? 'shed' : null;
@@ -205,7 +238,7 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
       const sc = 0.88 + rnd() * 0.3;
       const svg = kind === 'tree' ? treeArt(theme, tone, sc) : kind === 'pine' ? pineArt(theme, sc) : kind === 'bush' ? bushArt(theme, sc)
         : kind === 'flowers' ? flowerBedArt(theme, tone, sc) : kind === 'bench' ? benchArt() : kind === 'shed' ? shedArt()
-        : houseArt(randomHouseLook(rnd, theme.lit), 0.78);
+        : houseArt(randomHouseLook(rnd, theme.lit), 0.92);
       items.push({ p, svg });
       if (kind === 'house') glows.push(p);
     }
@@ -220,6 +253,7 @@ export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: 
     s += lamps.map((p) => `<circle cx="${f1(p.x)}" cy="${f1(p.y - 12)}" r="30" fill="url(#m-lamp-glow)"/>`).join('');
   }
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-sun)"/>`;
+  s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-fall)"/>`;
   return s;
 }
 
@@ -257,6 +291,9 @@ function defs(t: Theme, big: Box, box: Box): string {
     </pattern>
     <radialGradient id="m-window-glow"><stop offset="0" stop-color="#FFD98A" stop-opacity=".55"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></radialGradient>
     <radialGradient id="m-lamp-glow"><stop offset="0" stop-color="#FFE7A8" stop-opacity=".7"/><stop offset=".45" stop-color="#FFD98A" stop-opacity=".22"/><stop offset="1" stop-color="#FFD98A" stop-opacity="0"/></radialGradient>
+    <radialGradient id="m-glow"><stop offset="0" stop-color="#FFFBE6" stop-opacity=".22"/><stop offset="1" stop-color="#FFFBE6" stop-opacity="0"/></radialGradient>
+    <radialGradient id="m-shade"><stop offset="0" stop-color="#23352B" stop-opacity=".07"/><stop offset="1" stop-color="#23352B" stop-opacity="0"/></radialGradient>
+    <linearGradient id="m-fall" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF6DC" stop-opacity=".1"/><stop offset=".55" stop-color="#FFF6DC" stop-opacity="0"/><stop offset="1" stop-color="#23352B" stop-opacity=".08"/></linearGradient>
     <radialGradient id="m-sun" gradientUnits="userSpaceOnUse" cx="${f1(cx)}" cy="${f1(cy)}" r="${f1(r * 0.9)}">
       <stop offset="0" stop-color="${t.sun}"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
     </radialGradient>
@@ -376,8 +413,11 @@ function waterSvg(town: Town, t: Theme, rnd: () => number): string {
     const wpx = w.width * U;
     s += `<path d="${d}" fill="none" stroke="${t.bank}" stroke-width="${wpx + 20}" stroke-linecap="round" stroke-linejoin="round"/>`;
     s += `<path d="${d}" fill="none" stroke="#8C6A45" stroke-opacity=".25" stroke-width="${wpx + 5}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${d}" fill="none" stroke="#FFFFFF" stroke-opacity=".55" stroke-width="${wpx + 2.4}" stroke-dasharray="18 7 6 9" stroke-linecap="round" stroke-linejoin="round"/>`;
     s += `<path d="${d}" fill="none" stroke="${t.water}" stroke-width="${wpx}" stroke-linecap="round" stroke-linejoin="round"/>`;
-    s += `<path d="${d}" fill="none" stroke="${t.waterDeep}" stroke-opacity=".45" stroke-width="${wpx * 0.45}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${d}" fill="none" stroke="${t.waterDeep}" stroke-opacity=".22" stroke-width="${wpx * 0.72}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${d}" fill="none" stroke="${t.waterDeep}" stroke-opacity=".4" stroke-width="${wpx * 0.42}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    s += `<path d="${d}" fill="none" stroke="${t.waterHi}" stroke-opacity=".35" stroke-width="1.6" stroke-dasharray="26 34" stroke-linecap="round" transform="translate(${f1(-wpx * 0.28)} -2)"/>`;
     // Lilies along the banks and a duck or two.
     const lines = streetPolylines(town);
     for (let i = 1; i < pts.length; i++) {
@@ -390,15 +430,25 @@ function waterSvg(town: Town, t: Theme, rnd: () => number): string {
         if (clearance(q, lines) < 30) continue;
         s += `<g transform="translate(${f1(q.x)} ${f1(q.y)})">${k === 2 && i % 2 === 1 ? duckArt() : lilyArt(t, k)}</g>`;
       }
+      // Reeds at the water's edge.
+      for (let k = 0; k < 2; k++) {
+        const tt = rnd();
+        const p = { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * tt, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * tt };
+        const side = k ? -1 : 1;
+        const dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y, l = Math.hypot(dx, dy) || 1;
+        const q = { x: p.x + (-dy / l) * side * (wpx * 0.5 + 3), y: p.y + (dx / l) * side * (wpx * 0.5 + 3) };
+        if (clearance(q, lines) < 26) continue;
+        s += `<g transform="translate(${f1(q.x)} ${f1(q.y)})"><path d="M-3 2v-9M-1 2v-12M1 2v-8M3 2v-10" stroke="${t.leaves[0].dark}" stroke-width="1.2" stroke-linecap="round"/><ellipse cx="-1" cy="-12.6" rx="1" ry="2.4" fill="#7A5A3A"/><ellipse cx="3" cy="-10.6" rx="1" ry="2.2" fill="#7A5A3A"/></g>`;
+      }
     }
   }
   return s;
 }
 
-function streetsSvg(town: Town): string {
+function streetsSvg(town: Town, theme: Theme): string {
   const edges = town.edges;
   const w = (i: number) => (edges[i].style === 'lane' ? [24, 17] : [36, 27]);
-  let shadow = '', kerb = '', surf = '', marks = '', extras = '';
+  let shadow = '', kerb = '', surf = '', marks = '', extras = '', verge = '', stones = '', wear = '';
   edges.forEach((e, i) => {
     const d = edgeD(town, i);
     const [kw, sw] = w(i);
@@ -408,7 +458,10 @@ function streetsSvg(town: Town): string {
       surf += `<path d="${d}" stroke="#E2C79A" stroke-width="${sw + 2}" stroke-linecap="butt"/>`;
       marks += `<path d="${d}" stroke="#C9A877" stroke-width="${sw}" stroke-dasharray="3 9" stroke-linecap="butt"/>`;
     } else {
+      verge += `<path d="${d}" stroke="${theme.lawnTuft}" stroke-width="${kw + 7}" stroke-opacity=".8"/>`;
       kerb += `<path d="${d}" stroke="${C.kerb}" stroke-width="${kw}"/>`;
+      stones += `<path d="${d}" stroke="#B9A47C" stroke-width="${kw}" stroke-dasharray="7 2.2" stroke-opacity=".4" stroke-linecap="butt"/>`;
+      if (!e.closed && !e.cobbles) wear += `<path d="${d}" stroke="#E9DCBC" stroke-width="${Math.round(sw * 0.62)}" stroke-opacity=".5"/>`;
       surf += `<path d="${d}" stroke="${e.closed ? 'url(#hatch)' : e.cobbles ? 'url(#m-cobbles)' : C.road}" stroke-width="${sw}"/>`;
       if (!e.closed && !e.cobbles) surf += `<path d="${d}" stroke="#FFFDF6" stroke-opacity=".55" stroke-width="${Math.round(sw * 0.35)}" transform="translate(-2 -2)"/>`;
       if (e.style !== 'lane' && !e.closed && !e.oneWay && !e.cobbles) {
@@ -449,7 +502,7 @@ function streetsSvg(town: Town): string {
     plazas += `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="${laneOnly ? 12 : 18}" fill="${C.kerb}"/>`;
     plazaTop += `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="${laneOnly ? 8.5 : 13.5}" fill="${C.road}"/>`;
   }
-  return `<g class="streets" fill="none" stroke-linecap="round">${shadow}${kerb}${plazas}${surf}${plazaTop}${marks}</g><g class="street-signs">${extras}</g>`;
+  return `<g class="streets" fill="none" stroke-linecap="round">${verge}${shadow}${kerb}${stones}${plazas}${surf}${plazaTop}${wear}${marks}</g><g class="street-signs">${extras}</g>`;
 }
 
 /** Small static picture of a puzzle's streets and stops, for the route book. */

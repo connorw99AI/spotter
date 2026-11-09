@@ -53,12 +53,17 @@ export function personSvg(seed: string, o: PersonOpts = {}): string {
   let s = `<ellipse cx="1" cy="0" rx="${sit ? 9 : 6.6}" ry="2.2" fill="#23352B" opacity=".2"/>`;
   // Legs and shoes.
   const footY = sit ? hip + 5 : -1.4;
-  s += `<path d="M-2.2 ${hip}V${footY}M2.2 ${hip}V${footY}" stroke="${fit.legs}" stroke-width="3.2" stroke-linecap="round"/>`;
-  s += `<path d="M-3.8 ${footY + 0.7}h2.6M1.2 ${footY + 0.7}h2.6" stroke="#3B2A20" stroke-width="2.1" stroke-linecap="round"/>`;
+  s += `<path d="M2.2 ${hip}V${footY}" stroke="${shade(fit.legs, 0.8)}" stroke-width="3.2" stroke-linecap="round"/><path d="M-2.2 ${hip}V${footY}" stroke="${fit.legs}" stroke-width="3.2" stroke-linecap="round"/>`;
+  s += `<path d="M-3.8 ${footY + 0.7}h2.6M1.2 ${footY + 0.7}h2.6" stroke="#3B2A20" stroke-width="2.1" stroke-linecap="round"/><path d="M-3.4 ${footY + 0.3}h1.2M1.6 ${footY + 0.3}h1.2" stroke="#FFFFFF" stroke-width=".5" opacity=".35"/>`;
   // Body: a coat, or a dress that flares over the knees.
   s += fit.dress
     ? `<path d="M-7.2 ${hip + 4.4}L-5 ${sh + 3}Q-4.8 ${sh} -2.2 ${sh}H2.2Q4.8 ${sh} 5 ${sh + 3}L7.2 ${hip + 4.4}Q0 ${hip + 6.6} -7.2 ${hip + 4.4}Z" fill="${fit.coat}" stroke="${line}" stroke-width=".8" stroke-linejoin="round"/>`
     : `<path d="M-5.2 ${hip + 0.6}L-5.2 ${sh + 3}Q-5 ${sh} -2.2 ${sh}H2.2Q5 ${sh} 5.2 ${sh + 3}L5.2 ${hip + 0.6}Q0 ${hip + 2.2} -5.2 ${hip + 0.6}Z" fill="${fit.coat}" stroke="${line}" stroke-width=".8" stroke-linejoin="round"/>`;
+  // Light from the top left: the right side of the clothes falls into shade.
+  s += fit.dress
+    ? `<path d="M1.4 ${sh + 0.1}H2.2Q4.8 ${sh} 5 ${sh + 3}L7.2 ${hip + 4.4}Q5 ${hip + 5.8} 2.2 ${hip + 6}Z" fill="#23352B" opacity=".14"/>`
+    : `<path d="M1.4 ${sh + 0.1}H2.2Q5 ${sh} 5.2 ${sh + 3}L5.2 ${hip + 0.6}Q3.4 ${hip + 1.6} 1.6 ${hip + 1.8}Z" fill="#23352B" opacity=".14"/>`;
+  s += `<path d="M-4.4 ${sh + 3}V${hip - 1}" stroke="#FFFFFF" stroke-width=".8" opacity=".25" stroke-linecap="round"/>`;
   if (fit.apron) s += `<path d="M-3.4 ${sh + 4}h6.8V${hip + (fit.dress ? 4.4 : 1)}Q0 ${hip + (fit.dress ? 5.8 : 2.2)} -3.4 ${hip + (fit.dress ? 4.4 : 1)}Z" fill="#FFFAF0" stroke="#D9CCB2" stroke-width=".5"/>`;
   if (fit.buttons) s += `<circle cx="0" cy="${sh + 4}" r=".8" fill="#E0B04A"/><circle cx="0" cy="${sh + 7.4}" r=".8" fill="#E0B04A"/><circle cx="0" cy="${sh + 10.8}" r=".8" fill="#E0B04A"/>`;
   s += `<path d="M-3.4 ${sh + 0.4}Q0 ${sh + 2.6} 3.4 ${sh + 0.4}" fill="none" stroke="${line}" stroke-width=".6" opacity=".6"/>`;

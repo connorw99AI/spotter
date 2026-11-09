@@ -43,7 +43,8 @@ export function face(l: Look, x: number, y: number, s: number): string {
     <path d="M-7 12C-7 18 7 18 7 12Z" fill="${l.skin}"/>
     <circle r="11" fill="${l.skin}"/>
     <circle cx="-11" cy="1" r="2.4" fill="${l.skin}"/><circle cx="11" cy="1" r="2.4" fill="${l.skin}"/>
-    ${hairTop}${hat}
+    <path d="M2.4-10.7A11 11 0 0 1 2.4 10.7 14 14 0 0 0 2.4-10.7Z" fill="#23352B" opacity=".07"/>
+    ${hairTop}${l.hat ? '' : '<path d="M-7.4-8.6Q-3.6-12.6 1.6-11.6" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" opacity=".28"/>'}${hat}
     <circle cx="-4" cy="0" r="1.4" fill="#23352B"/><circle cx="4" cy="0" r="1.4" fill="#23352B"/>
     ${l.older ? '<path d="M-6.5-3.4h-2M6.5-3.4h2" stroke="#23352B" stroke-width=".7" opacity=".5"/>' : ''}
     <circle cx="-6.5" cy="4" r="2.2" fill="#E77D9C" opacity=".35"/><circle cx="6.5" cy="4" r="2.2" fill="#E77D9C" opacity=".35"/>
