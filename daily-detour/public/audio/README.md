@@ -15,11 +15,14 @@ recorded audio instead, put the files in this folder and add `manifest.json`:
     "bell": "bell.mp3",
     "stamp": "stamp.mp3",
     "complete": "complete.mp3",
+    "gold": "gold.mp3",
     "tap": "tap.mp3"
   }
 }
 ```
 
-Any cue left out keeps its synthesised version. Music loops seamlessly, so export
+Any cue left out keeps its synthesised version. Pickups and deliveries are
+played a little higher for each one in the same route, so record them at the
+lowest pitch you want to hear. Music loops seamlessly, so export
 it with a loop point at the end. Keep cues short (under a second) and mastered
 quietly: the game plays several at once.

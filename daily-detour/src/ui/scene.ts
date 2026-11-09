@@ -20,10 +20,15 @@ const KERB = { street: 36, lane: 24, bridge: 42 };
  * Builds the static illustrated town: ground, blocks, water, streets, scenery,
  * light. Pure string output, drawn once per puzzle and never touched again.
  */
-export function buildScene(town: Town, box: Box, theme: Theme): string {
+/**
+ * Paints the whole town. `box` is the town itself; `area` is how far out the
+ * countryside is furnished (the visible screen, which on a phone is far taller
+ * than the town).
+ */
+export function buildScene(town: Town, box: Box, theme: Theme, area: Box = { x: box.x - 240, y: box.y - 240, w: box.w + 480, h: box.h + 480 }): string {
   const rnd = seeded(town.def.id + ':scene');
   const lines = streetPolylines(town);
-  const big = { x: box.x - 600, y: box.y - 600, w: box.w + 1200, h: box.h + 1200 };
+  const big = { x: area.x - 360, y: area.y - 360, w: area.w + 720, h: area.h + 720 };
   const water = waterLines(town);
   const nearWater = (p: Pt, margin: number) => water.some(({ a, b, half }) => segDist(p, a, b) < half + margin);
 
@@ -52,6 +57,40 @@ export function buildScene(town: Town, box: Box, theme: Theme): string {
   let s = defs(theme, big, box);
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="${theme.lawn}"/>`;
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-tufts)"/>`;
+
+  // Patchwork fields out in the countryside, hedged and gently askew, so the
+  // world past the town reads as farmland rather than one carpet of trees.
+  const frnd = seeded(town.def.id + ':fields');
+  const fields: { c: Pt; w: number; h: number; a: number; r: number }[] = [];
+  const fstep = 205;
+  for (let y = area.y; y < area.y + area.h; y += fstep) {
+    for (let x = area.x; x < area.x + area.w; x += fstep) {
+      const keep = frnd() < 0.72;
+      const w = 125 + frnd() * 80, h = 95 + frnd() * 60, a = (frnd() - 0.5) * 22;
+      const c = { x: x + fstep / 2 + (frnd() - 0.5) * 60, y: y + fstep / 2 + (frnd() - 0.5) * 60 };
+      const kind = Math.floor(frnd() * 3);
+      if (!keep) continue;
+      const r = Math.hypot(w, h) / 2;
+      if (c.x + r > box.x - 30 && c.x - r < box.x + box.w + 30 && c.y + r > box.y - 30 && c.y - r < box.y + box.h + 30) continue;
+      if (nearWater(c, r + 12)) continue;
+      if (fields.some((f) => dist(f.c, c) < f.r + r + 16)) continue;
+      fields.push({ c, w, h, a, r });
+      const fill = ['url(#m-rows)', 'url(#m-stripes)', 'url(#m-meadow)'][kind];
+      s += `<g transform="translate(${f1(c.x)} ${f1(c.y)}) rotate(${f1(a)})">`
+        + `<rect x="${f1(-w / 2 - 7)}" y="${f1(-h / 2 - 5)}" width="${f1(w + 14)}" height="${f1(h + 14)}" rx="16" fill="rgba(35,53,43,.12)"/>`
+        + `<rect x="${f1(-w / 2 - 6)}" y="${f1(-h / 2 - 6)}" width="${f1(w + 12)}" height="${f1(h + 12)}" rx="15" fill="${theme.hedgeDeep}"/>`
+        + `<rect x="${f1(-w / 2)}" y="${f1(-h / 2)}" width="${f1(w)}" height="${f1(h)}" rx="10" fill="${fill}"/>`
+        + `<rect x="${f1(-w / 2 - 3)}" y="${f1(-h / 2 - 3)}" width="${f1(w + 6)}" height="${f1(h + 6)}" rx="13" fill="none" stroke="${theme.hedge}" stroke-width="8" stroke-dasharray="0 11" stroke-linecap="round"/>`
+        + `</g>`;
+    }
+  }
+  const inField = (p: Pt, pad: number) => fields.some((f) => {
+    if (dist(p, f.c) > f.r + pad) return false;
+    const ang = (-f.a * Math.PI) / 180, dx = p.x - f.c.x, dy = p.y - f.c.y;
+    const lx = dx * Math.cos(ang) - dy * Math.sin(ang), ly = dx * Math.sin(ang) + dy * Math.cos(ang);
+    return Math.abs(lx) < f.w / 2 + pad && Math.abs(ly) < f.h / 2 + pad;
+  });
+
   s += blocksSvg(town, blocks, theme, rnd);
   s += waterSvg(town, theme, rnd);
   s += streetsSvg(town);
@@ -159,6 +198,7 @@ export function buildScene(town: Town, box: Box, theme: Theme): string {
       if (clearance(p, lines) < need) continue;
       if (town.def.nodes.some((n) => dist(nodePt(town, n.id), p) < need + 14)) continue;
       if (nearWater(p, r + 6)) continue;
+      if (where === 'outer' && inField(p, r + 4)) continue;
       if (!free(p, r + 3)) continue;
       taken.push({ p, r });
       const tone = Math.floor(rnd() * 8);
@@ -180,7 +220,6 @@ export function buildScene(town: Town, box: Box, theme: Theme): string {
     s += lamps.map((p) => `<circle cx="${f1(p.x)}" cy="${f1(p.y - 12)}" r="30" fill="url(#m-lamp-glow)"/>`).join('');
   }
   s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-sun)"/>`;
-  s += `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#m-vignette)"/>`;
   return s;
 }
 
@@ -279,11 +318,23 @@ function blocksSvg(town: Town, blocks: Block[], t: Theme, rnd: () => number): st
   return s + '</g>';
 }
 
+/** Rivers run on past the town, off every screen, rather than stopping at its edge. */
+function runOn(points: readonly (readonly [number, number])[]): [number, number][] {
+  const pts = points.map(([x, y]) => [x, y] as [number, number]);
+  if (pts.length < 2) return pts;
+  const ext = (a: [number, number], b: [number, number]): [number, number] => {
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    return [b[0] + (dx / l) * 30, b[1] + (dy / l) * 30];
+  };
+  return [ext(pts[1], pts[0]), ...pts, ext(pts[pts.length - 2], pts[pts.length - 1])];
+}
+
 function waterLines(town: Town): { a: Pt; b: Pt; half: number }[] {
   const out: { a: Pt; b: Pt; half: number }[] = [];
   for (const w of town.def.water ?? []) {
-    for (let i = 1; i < w.points.length; i++) {
-      out.push({ a: { x: w.points[i - 1][0] * U, y: w.points[i - 1][1] * U }, b: { x: w.points[i][0] * U, y: w.points[i][1] * U }, half: (w.width * U) / 2 });
+    const pts = runOn(w.points);
+    for (let i = 1; i < pts.length; i++) {
+      out.push({ a: { x: pts[i - 1][0] * U, y: pts[i - 1][1] * U }, b: { x: pts[i][0] * U, y: pts[i][1] * U }, half: (w.width * U) / 2 });
     }
   }
   return out;
@@ -295,8 +346,8 @@ function segDist(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 
-function waterPath(points: [number, number][]): string {
-  const pts = points.map(([x, y]) => ({ x: x * U, y: y * U }));
+function waterPath(points: readonly (readonly [number, number])[]): string {
+  const pts = runOn(points).map(([x, y]) => ({ x: x * U, y: y * U }));
   let d = `M${f1(pts[0].x)} ${f1(pts[0].y)}`;
   for (let i = 1; i < pts.length; i++) {
     const mid = i < pts.length - 1 ? { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 } : pts[i];
@@ -321,11 +372,7 @@ function waterSvg(town: Town, t: Theme, rnd: () => number): string {
   let s = '';
   for (const w of town.def.water ?? []) {
     const pts = w.points.map(([x, y]) => ({ x: x * U, y: y * U }));
-    let d = `M${f1(pts[0].x)} ${f1(pts[0].y)}`;
-    for (let i = 1; i < pts.length; i++) {
-      const mid = i < pts.length - 1 ? { x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2 } : pts[i];
-      d += ` Q${f1(pts[i].x)} ${f1(pts[i].y)} ${f1(mid.x)} ${f1(mid.y)}`;
-    }
+    const d = waterPath(w.points);
     const wpx = w.width * U;
     s += `<path d="${d}" fill="none" stroke="${t.bank}" stroke-width="${wpx + 20}" stroke-linecap="round" stroke-linejoin="round"/>`;
     s += `<path d="${d}" fill="none" stroke="#8C6A45" stroke-opacity=".25" stroke-width="${wpx + 5}" stroke-linecap="round" stroke-linejoin="round"/>`;

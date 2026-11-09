@@ -1,5 +1,5 @@
 import { medalFor, medalName, thresholds, type Medal } from '../core/medals';
-import { allDelivered, carriedCount, freshLeft, isComplete, type StepEvent } from '../core/rules';
+import { allDelivered, carriedCount, freshLeft, isComplete, type GameState, type StepEvent } from '../core/rules';
 import { buildTown, streetNeighbours, type Town } from '../core/town';
 import type { NodeId, PuzzleDef, TipDef } from '../core/types';
 import type { Advice } from '../game/advisor';
@@ -56,6 +56,12 @@ export interface PlayOptions {
 }
 
 /** One puzzle session: planning, hints, the ride and the result docket. */
+/** How far up the chime ladder this pickup or delivery sits: one rung per order already handled. */
+function climb(s: GameState, kind: 'pickup' | 'deliver'): number {
+  const n = s.orders.filter((o) => (kind === 'deliver' ? o.status === 2 : o.status >= 1)).length;
+  return Math.max(0, n - 1);
+}
+
 export class PlayScreen {
   readonly root: HTMLElement;
   private alive = true;
@@ -83,6 +89,10 @@ export class PlayScreen {
   /** The route last delivered in this visit, so its button can offer a replay. */
   private deliveredRoute: string | null = null;
   private timers = new Set<number>();
+  /** Whether the route was a finished gold route at the last render (null before the first). */
+  private wasGold: boolean | null = null;
+  private coachMsg: Message | null = null;
+  private coachTimer = 0;
 
   // DOM
   private coachEl!: HTMLElement;
@@ -98,6 +108,11 @@ export class PlayScreen {
   private rideBar!: HTMLElement;
   private docket!: HTMLElement;
   private mapWrap!: HTMLElement;
+  private topEl!: HTMLElement;
+  private trayEl!: HTMLElement;
+  private controlsEl!: HTMLElement;
+  private fitObs: ResizeObserver | null = null;
+  private bottomInset = 0;
 
   constructor(private readonly app: AppServices, private readonly opts: PlayOptions) {
     const p = opts.puzzle;
@@ -128,7 +143,7 @@ export class PlayScreen {
     const p = this.opts.puzzle;
     const label = this.opts.mode === 'daily' ? `Daily #${dailyNumber(this.opts.dateKey!)}` : puzzleLabel(p);
     this.hintBtn = h('button', { class: 'btn-icon btn-hint', type: 'button', 'aria-label': 'Hints', onclick: () => this.toggleHints() }, icon(hintIcon, 22), h('span', { class: 'btn-hint-label' }, 'Hint'));
-    const top = h('header', { class: 'play-top' },
+    const top = this.topEl = h('header', { class: 'play-top' },
       h('button', { class: 'btn-icon', type: 'button', 'aria-label': this.opts.mode === 'daily' ? 'Back to town' : 'Back to the route book', onclick: () => this.leave() }, icon(backIcon, 22)),
       h('div', { class: 'play-title' }, h('span', { class: 'play-kicker' }, label), h('h1', {}, p.title)),
       this.hintBtn,
@@ -144,7 +159,7 @@ export class PlayScreen {
     this.redoBtn = h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Redo', title: 'Redo', onclick: () => this.doRedo() }, icon(redoIcon, 22));
     this.clearBtn = h('button', { class: 'btn-icon', type: 'button', 'aria-label': 'Clear route', title: 'Clear route', onclick: () => this.doClear() }, icon(clearIcon, 20));
     this.rideBtn = h('button', { class: 'btn btn-ride', type: 'button', onclick: () => this.startRide() });
-    const controls = h('div', { class: 'controls' }, h('div', { class: 'edit-btns' }, this.undoBtn, this.redoBtn, this.clearBtn), this.rideBtn);
+    const controls = this.controlsEl = h('div', { class: 'controls' }, h('div', { class: 'edit-btns' }, this.undoBtn, this.redoBtn, this.clearBtn), this.rideBtn);
     this.hintPanel = h('section', { class: 'hint-panel', hidden: true, 'aria-label': 'Hints' });
     this.rideBar = h('div', { class: 'ride-bar', hidden: true },
       h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => this.cancelRide() }, 'Stop'),
@@ -152,8 +167,41 @@ export class PlayScreen {
       h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => this.ride?.skip() }, 'Skip'),
     );
     this.docket = h('div', { class: 'docket-backdrop', hidden: true });
-    const side = h('div', { class: 'play-side' }, this.coachEl, h('div', { class: 'tray' }, this.ordersEl, this.statsEl), controls, this.rideBar, this.hintPanel);
+    this.trayEl = h('div', { class: 'tray' }, this.ordersEl, this.statsEl);
+    const side = h('div', { class: 'play-side' }, this.coachEl, this.trayEl, controls, this.rideBar, this.hintPanel);
+    if (typeof ResizeObserver !== 'undefined') {
+      this.fitObs = new ResizeObserver(() => this.fit());
+      this.fitObs.observe(this.mapWrap);
+      this.fitObs.observe(this.trayEl);
+    }
     return h('section', { class: 'screen play' }, top, h('div', { class: 'play-body' }, this.mapWrap, side), this.srEl, this.docket);
+  }
+
+  /**
+   * The town fills the screen; this keeps it clear of the floating HUD: the
+   * title bar and a two-line coach above, the order tray and dock below.
+   */
+  private fit() {
+    if (!this.alive || this.ride) return;
+    const wrap = this.mapWrap.getBoundingClientRect();
+    if (wrap.width < 40 || wrap.height < 40) return;
+    // Phone on its side: the HUD is a column on the right, so keep clear of that instead.
+    if (wrap.width > wrap.height && wrap.height <= 500) {
+      const col = this.controlsEl.getBoundingClientRect().left || this.topEl.getBoundingClientRect().left;
+      this.map.fitView(wrap.width, wrap.height, { top: 8, bottom: 8, left: 8, right: wrap.right - col + 8 });
+      return;
+    }
+    const wide = wrap.width >= 900;
+    const top = this.topEl.getBoundingClientRect().bottom - wrap.top + (wide ? 64 : 58);
+    const tray = this.trayEl.getBoundingClientRect();
+    // With the tray tucked under the hint sheet, keep the room it last needed.
+    const bottom = tray.height === 0
+      ? this.bottomInset
+      : wrap.bottom - Math.min(tray.top, this.controlsEl.getBoundingClientRect().top || wrap.bottom) + 6;
+    if (!bottom) return;
+    this.bottomInset = bottom;
+    const side = wide ? 24 : 6;
+    this.map.fitView(wrap.width, wrap.height, { top, bottom, left: side, right: side });
   }
 
   // ─────────────────────────────── input ───────────────────────────────
@@ -324,8 +372,7 @@ export class PlayScreen {
     for (const e of events) {
       if (e.type === 'pickup' || e.type === 'deliver' || e.type === 'full') {
         this.map.pop(node, e.type, orderKind(this.town, e.order), e.type === 'deliver' ? residentsFor(this.opts.puzzle).get(this.town.orders[e.order].to) : undefined);
-        if (e.type === 'pickup') this.app.sound.play('pickup');
-        if (e.type === 'deliver') this.app.sound.play('deliver');
+        if (e.type === 'pickup' || e.type === 'deliver') this.app.sound.play(e.type, climb(this.editor.state, e.type));
       }
     }
     const state = this.editor.state;
@@ -567,7 +614,7 @@ export class PlayScreen {
         for (const e of sim.events[i] ?? []) {
           if (e.type === 'pickup' || e.type === 'deliver') {
             this.map.pop(route[i], e.type, orderKind(this.town, e.order), e.type === 'deliver' ? residentsFor(this.opts.puzzle).get(this.town.orders[e.order].to) : undefined);
-            this.app.sound.play(e.type === 'pickup' ? 'pickup' : 'deliver');
+            this.app.sound.play(e.type, climb(sim.states[i], e.type));
           }
         }
         this.renderOrders(i);
@@ -615,6 +662,7 @@ export class PlayScreen {
     const before = chapter ? chapterDelivered(this.app, chapter) : 0;
     const route = [...this.editor.route];
     const res = this.app.store.recordCompletion(p.id, p.rev, moves, medal, this.hints, route);
+    const streak = res.previousBest === undefined ? this.app.store.noteFirstDelivery(medal, this.hints) : null;
     if (this.opts.mode === 'daily') {
       this.app.store.recordDaily(this.opts.dateKey!, { puzzleId: p.id, rev: p.rev, moves, medal, hints: this.hints });
     }
@@ -624,10 +672,10 @@ export class PlayScreen {
     this.app.haptics([20, 60, 30]);
     const after = chapter ? chapterDelivered(this.app, chapter) : 0;
     const letter = chapter ? STORY[chapter.id]?.letters.find((l) => l.at > before && l.at <= after) : undefined;
-    this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore, letter);
+    this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore, letter, streak);
   }
 
-  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest: number | undefined, heartsGained: number, letter?: Letter) {
+  private showDocket(moves: number, medal: Medal, newBest: boolean, previousBest: number | undefined, heartsGained: number, letter?: Letter, streak?: { run: number; best: number; newBest: boolean } | null) {
     const p = this.opts.puzzle;
     const rec = this.app.store.levelRecord(p.id, p.rev)!;
     const daily = this.opts.mode === 'daily' ? { number: dailyNumber(this.opts.dateKey!), dateKey: this.opts.dateKey! } : undefined;
@@ -663,6 +711,8 @@ export class PlayScreen {
       medal !== 'gold' && moves - this.t.gold <= 2
         ? h('p', { class: 'near-miss' }, `So close: just ${moves - this.t.gold} ${moves - this.t.gold === 1 ? 'move' : 'moves'} from gold.`) : null,
       moments.length ? h('ul', { class: 'docket-moments' }, ...moments.slice(0, 2).map((m) => h('li', { class: `moment moment-${m.kind}` }, icon(sparkIcon, 18), m.text))) : null,
+      streak && medal === 'gold' && this.hints === 0 && streak.run >= 2
+        ? h('p', { class: 'gold-run' }, h('b', {}, String(streak.run)), h('span', {}, 'first-try golds in a row'), streak.newBest && streak.run >= 3 ? h('i', {}, 'best yet') : null) : null,
       heartsGained > 0 ? h('p', { class: 'docket-hearts' }, icon(heartIcon, 18), `+${heartsGained} ${heartsGained === 1 ? 'heart' : 'hearts'} for the village`) : null,
       letter ? letterCard(letter, true) : null,
       h('ul', { class: 'docket-notes' }, ...notes),
@@ -742,7 +792,20 @@ export class PlayScreen {
     const doom = this.lastAdvice?.key === this.routeKey() && this.lastAdvice.advice.status === 'doomed' ? this.lastAdvice.advice : null;
     const action = m.action ?? (doom && doom.undoTo !== undefined && !this.ride
       ? { label: `Undo to move ${doom.undoTo}`, run: () => this.keepMoves(doom.undoTo!) } : undefined);
-    this.coachEl.className = `coach coach-${m.tone}`;
+    // Passing news (info, a good step, a warning) fades after a moment so the
+    // town stays clear; tips and anything with a button stay until replaced.
+    const sticky = !!action || m.tone === 'tip';
+    const fresh = m !== this.coachMsg;
+    this.coachMsg = m;
+    const faded = !sticky && !fresh && this.coachEl.classList.contains('faded');
+    if (fresh || sticky) { clearTimeout(this.coachTimer); this.coachTimer = 0; }
+    if (!sticky && !faded && !this.coachTimer) {
+      this.coachTimer = window.setTimeout(() => {
+        this.coachTimer = 0;
+        if (this.alive) this.coachEl.classList.add('faded');
+      }, m.tone === 'warn' ? 7000 : 4500);
+    }
+    this.coachEl.className = `coach coach-${m.tone}${faded ? ' faded' : ''}`;
     setKids(this.coachEl,
       h('p', {}, m.text),
       action ? h('button', { class: 'btn btn-small', type: 'button', onclick: () => action.run() }, action.label) : null,
@@ -828,7 +891,7 @@ export class PlayScreen {
       : null;
     setKids(this.statsEl,
       h('span', { class: 'moves' }, h('b', {}, String(this.editor.moves)), this.editor.moves === 1 ? ' move' : ' moves'),
-      h('span', { class: 'target' }, `Gold ${this.t.gold}`),
+      h('span', { class: `target${this.onGold() ? ' on-gold' : ''}` }, this.onGold() ? `Gold ${this.t.gold} ✓` : `Gold ${this.t.gold}`),
       rec ? h('span', { class: 'best' }, `Best ${rec.bestMoves}`) : null,
       this.hints > 0 ? h('span', { class: 'hint-count' }, `${this.hints} ${this.hints === 1 ? 'hint' : 'hints'}`) : null,
       rec?.bestRoute ? h('button', { class: `ghost-toggle${this.showGhost ? ' on' : ''}`, type: 'button', 'aria-pressed': String(this.showGhost), onclick: () => { this.showGhost = !this.showGhost; this.renderGhost(); this.renderStats(); } }, this.showGhost ? 'Hide best route' : 'Show best route') : null,
@@ -843,10 +906,25 @@ export class PlayScreen {
     this.clearBtn.disabled = riding || this.editor.moves === 0;
     this.hintBtn.disabled = riding;
     const complete = isComplete(this.town, this.editor.state);
+    const gold = this.onGold();
+    const again = this.deliveredRoute === this.routeKey();
     this.rideBtn.disabled = riding || this.editor.moves === 0;
-    this.rideBtn.className = `btn btn-ride${complete ? ' btn-primary ready' : ''}`;
-    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (this.deliveredRoute === this.routeKey() ? 'Ride again' : 'Deliver') : 'Preview');
-    this.rideBtn.setAttribute('aria-label', complete ? 'Deliver: send the courier along your route' : 'Preview the route so far');
+    this.rideBtn.className = `btn btn-ride${complete ? ' btn-primary ready' : ''}${gold && !again ? ' gold' : ''}`;
+    this.rideBtn.replaceChildren(icon(playIcon, 16), complete ? (again ? 'Ride again' : 'Deliver') : 'Preview',
+      gold && !again ? h('span', { class: 'gold-mark' }, 'gold') : '');
+    this.rideBtn.setAttribute('aria-label', complete ? `Deliver: send the courier along your route${gold ? ' (a gold route)' : ''}` : 'Preview the route so far');
+    // The whole screen catches the light when a finished route is a gold one.
+    this.root.classList.toggle('gold-ready', gold && !again && !riding);
+    if (gold && this.wasGold === false && !riding) {
+      this.app.sound.play('gold');
+      this.app.haptics([8, 40, 12]);
+    }
+    this.wasGold = gold;
+  }
+
+  /** A finished route at or under the gold target. */
+  private onGold(): boolean {
+    return this.editor.moves > 0 && this.editor.moves <= this.t.gold && isComplete(this.town, this.editor.state);
   }
 
   // ─────────────────────────────── lifecycle ───────────────────────────────
@@ -867,10 +945,12 @@ export class PlayScreen {
   /** Called on navigation. After this, nothing from this session may touch the UI. */
   destroy() {
     this.alive = false;
+    this.fitObs?.disconnect();
     this.ride?.cancel();
     this.ride = null;
     clearTimeout(this.adviceTimer);
     clearTimeout(this.chipTimer);
+    clearTimeout(this.coachTimer);
     for (const t of this.timers) clearTimeout(t);
     this.timers.clear();
     this.map.destroy();

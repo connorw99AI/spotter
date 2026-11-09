@@ -48,10 +48,24 @@ export function topBar(title: string, back: () => void, backLabel: string): HTML
   );
 }
 
+/** The lane through the hero, as cubic segments, so scenery can keep off it. */
+const HERO_LANE: [number, number][][] = [
+  [[-460, 120], [-360, 90], [-160, 164], [-60, 132]],
+  [[-60, 132], [40, 100], [100, 152], [180, 122]],
+  [[180, 122], [260, 92], [300, 76], [420, 100]],
+  [[420, 100], [540, 124], [700, 80], [820, 110]],
+];
+const laneD = (segs: [number, number][][]) => `M${segs[0][0].join(' ')}` + segs.map(([, a, b, c]) => `C${a.join(' ')} ${b.join(' ')} ${c.join(' ')}`).join('');
+
+/**
+ * The home screen's village: a lane curling through it with Pip mid-round.
+ * The middle 360×180 is composed by hand; the countryside around it is
+ * scattered so the art can fill a phone edge to edge or a wide desktop band.
+ */
 function heroArt(animate: boolean): string {
-  // A lane curling through a little village, with the courier mid-round.
   const t = THEMES.spring;
-  const lane = 'M-60 132C40 100 100 152 180 122S300 76 420 100';
+  const lane = laneD(HERO_LANE);
+  const ride = laneD(HERO_LANE.slice(1, 3));
   const rnd = seeded('hero');
   const look = () => randomHouseLook(rnd, false);
   const hedgeBlock = (x: number, y: number, w: number, hgt: number) => `
@@ -59,14 +73,52 @@ function heroArt(animate: boolean): string {
     <rect x="${x + 4}" y="${y + 4}" width="${w - 8}" height="${hgt - 8}" rx="7" fill="${t.hedge}" stroke="${t.hedge}" stroke-width="3" stroke-dasharray="0 9" stroke-linecap="round"/>
     <rect x="${x + 9}" y="${y + 9}" width="${w - 18}" height="${hgt - 18}" rx="4" fill="${t.garden[0]}"/>
     <rect x="${x + 9}" y="${y + 9}" width="${(w - 18) / 2}" height="${hgt - 18}" rx="4" fill="${t.garden[1]}"/>`;
-  return `<svg viewBox="0 0 360 180" class="hero-art${animate ? ' riding' : ''}" aria-hidden="true">
-    <defs><radialGradient id="hero-sun" cx=".18" cy=".05" r="1"><stop offset="0" stop-color="#FFFAE4" stop-opacity=".45"/><stop offset="1" stop-color="#FFFAE4" stop-opacity="0"/></radialGradient></defs>
-    <rect width="360" height="180" fill="${t.lawn}"/>
-    ${hedgeBlock(14, 18, 92, 76)}${hedgeBlock(238, 128, 110, 70)}
+
+  // Countryside around the hand-made middle: fields first, then trees and cottages.
+  const pts: { x: number; y: number }[] = [];
+  for (const [a, b, c, d] of HERO_LANE) {
+    for (let i = 0; i <= 24; i++) {
+      const u = i / 24, v = 1 - u;
+      pts.push({ x: v * v * v * a[0] + 3 * v * v * u * b[0] + 3 * v * u * u * c[0] + u * u * u * d[0], y: v * v * v * a[1] + 3 * v * v * u * b[1] + 3 * v * u * u * c[1] + u * u * u * d[1] });
+    }
+  }
+  const laneDist = (x: number, y: number) => Math.min(...pts.map((p) => Math.hypot(p.x - x, p.y - y)));
+  const core = (x: number, y: number, m: number) => x > -m && x < 360 + m && y > -m && y < 180 + m;
+  const wide = seeded('hero-wide');
+  let fields = '';
+  const fieldBoxes: { x: number; y: number; w: number; h: number }[] = [];
+  for (const [fx, fy] of [[-330, -50], [-200, 10], [-360, 170], [-210, 200], [400, -50], [560, 10], [450, 190], [610, 200], [-20, 215], [150, 225], [300, 230], [-130, 260]]) {
+    const w = 110 + wide() * 60, hh = 70 + wide() * 40;
+    const x = fx + (wide() - 0.5) * 30, y = fy + (wide() - 0.5) * 20;
+    if (core(x + w / 2, y + hh / 2, 40 + Math.max(w, hh) / 2) || laneDist(x + w / 2, y + hh / 2) < Math.max(w, hh) / 2 + 22) continue;
+    fieldBoxes.push({ x, y, w, h: hh });
+    fields += hedgeBlock(Math.round(x), Math.round(y), Math.round(w), Math.round(hh));
+  }
+  const items: { y: number; svg: string }[] = [];
+  for (let y = -60; y < 305; y += 30) {
+    for (let x = -410; x < 780; x += 30) {
+      const px = x + (wide() - 0.5) * 22, py = y + (wide() - 0.5) * 22;
+      const roll = wide();
+      if (core(px, py, 8) || laneDist(px, py) < 30) continue;
+      if (fieldBoxes.some((f) => px > f.x - 12 && px < f.x + f.w + 12 && py > f.y - 14 && py < f.y + f.h + 8)) continue;
+      const svg = roll < 0.3 ? treeArt(t, Math.floor(wide() * 8), 0.9 + wide() * 0.3) : roll < 0.42 ? pineArt(t, 0.95 + wide() * 0.25)
+        : roll < 0.5 ? flowerBedArt(t, Math.floor(wide() * 3), 1) : roll < 0.54 ? houseArt(look(), 1) : '';
+      if (svg) items.push({ y: py, svg: `<g transform="translate(${px.toFixed(1)} ${py.toFixed(1)})">${svg}</g>` });
+    }
+  }
+  items.sort((a, b) => a.y - b.y);
+
+  return `<svg viewBox="-400 -60 1160 350" preserveAspectRatio="xMidYMid slice" class="hero-art${animate ? ' riding' : ''}" aria-hidden="true">
+    <defs><radialGradient id="hero-sun" cx=".3" cy=".05" r=".9"><stop offset="0" stop-color="#FFFAE4" stop-opacity=".5"/><stop offset="1" stop-color="#FFFAE4" stop-opacity="0"/></radialGradient>
+    <pattern id="hero-tufts" width="52" height="52" patternUnits="userSpaceOnUse"><path d="M9 14l2-4 2 4M33 33l2-4 2 4M22 46l1.6-3 1.6 3" stroke="${t.lawnTuft}" stroke-width="1.4" fill="none" stroke-linecap="round"/></pattern></defs>
+    <rect x="-400" y="-60" width="1160" height="350" fill="${t.lawn}"/>
+    <rect x="-400" y="-60" width="1160" height="350" fill="url(#hero-tufts)"/>
+    ${fields}${hedgeBlock(14, 18, 92, 76)}${hedgeBlock(238, 128, 110, 70)}
     <path d="${lane}" fill="none" stroke="${C.kerb}" stroke-width="34" stroke-linecap="round"/>
     <path d="${lane}" fill="none" stroke="${C.road}" stroke-width="26" stroke-linecap="round"/>
     <path d="${lane}" fill="none" stroke="#FFFDF6" stroke-opacity=".6" stroke-width="9" transform="translate(-2 -2)"/>
     <path d="${lane}" fill="none" stroke="#E4D6B6" stroke-width="2.4" stroke-dasharray="10 14"/>
+    ${items.map((i) => i.svg).join('')}
     <g transform="translate(58 70)">${houseArt(look(), 1.25)}</g>
     <g transform="translate(150 84)">${shopArt('bakery', false, 1.05)}</g>
     <g transform="translate(118 50)">${treeArt(t, 0, 1.15)}</g>
@@ -77,10 +129,10 @@ function heroArt(animate: boolean): string {
     <g transform="translate(24 172)">${treeArt(t, 1, 1)}</g>
     <g transform="translate(120 172)">${flowerBedArt(t, 1, 1.2)}</g>
     <g transform="translate(196 104)">${lampArt(false)}</g>
-    <rect width="360" height="180" fill="url(#hero-sun)"/>
+    <rect x="-400" y="-60" width="1160" height="350" fill="url(#hero-sun)"/>
     <g class="courier"${animate ? '' : ' transform="translate(176 112) scale(.92)"'}>
       <g transform="translate(0 -12) scale(.92)">${courierSvg()}</g>
-      ${animate ? `<animateMotion dur="11s" repeatCount="indefinite" path="${lane}" rotate="0"/>` : ''}
+      ${animate ? `<animateMotion dur="12s" repeatCount="indefinite" path="${ride}" rotate="0"/><animate attributeName="opacity" dur="12s" repeatCount="indefinite" values="0;1;1;0" keyTimes="0;.06;.94;1"/>` : ''}
     </g>
   </svg>`;
 }
@@ -230,8 +282,9 @@ export class HomeScreen implements Screen {
     setKids(this.root,
       h('div', { class: 'home-hero' },
         h('div', { class: 'hero-frame' }),
-        h('h1', { class: 'logo', tabindex: -1 }, 'The Daily Detour'),
-        h('p', { class: 'tagline' }, 'A little journey. A clever detour.')),
+        h('div', { class: 'hero-title' },
+          h('h1', { class: 'logo', tabindex: -1 }, 'The Daily Detour'),
+          h('p', { class: 'tagline' }, 'A little journey. A clever detour.'))),
       banner,
       h('div', { class: 'home-cards' }, first ? continueCard : dailyCard, first ? dailyCard : continueCard, villageCard),
       h('nav', { class: 'home-nav', 'aria-label': 'More' },

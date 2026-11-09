@@ -51,12 +51,15 @@ export interface SaveData {
   drafts: Record<string, Draft>;
   /** Village projects the player has restored, in order. */
   restored: string[];
+  /** First-try golds in a row (without hints), and the longest such run. */
+  goldRun: number;
+  bestGoldRun: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = { motion: 'system', sound: true, music: true, haptics: true, speed: 'relaxed', reminder: false, reminderHour: 9 };
 
 export function emptySave(): SaveData {
-  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {}, restored: [] };
+  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {}, restored: [], goldRun: 0, bestGoldRun: 0 };
 }
 
 const MEDALS: readonly string[] = ['gold', 'silver', 'bronze'];
@@ -112,6 +115,8 @@ export function parseSave(raw: string | null): SaveData {
   if (isObj(data.daily)) for (const [k, v] of Object.entries(data.daily)) { const r = cleanDaily(v); if (r && DATE_KEY.test(k)) save.daily[k] = r; }
   if (isObj(data.drafts)) for (const [k, v] of Object.entries(data.drafts)) { const r = cleanDraft(v); if (r && r.key === k) save.drafts[k] = r; }
   save.settings = cleanSettings(data.settings);
+  if (isCount(data.goldRun)) save.goldRun = data.goldRun;
+  if (isCount(data.bestGoldRun)) save.bestGoldRun = Math.max(data.bestGoldRun, save.goldRun);
   if (Array.isArray(data.restored)) save.restored = [...new Set(data.restored.filter((x): x is string => typeof x === 'string' && /^[a-z-]{1,24}$/.test(x)))];
   return save;
 }
@@ -187,6 +192,21 @@ export class SaveStore {
     this.data.levels[puzzleId] = next;
     this.flush();
     return { newBest, previousBest: prev?.bestMoves };
+  }
+
+  /**
+   * First-try golds in a row. Only a puzzle's first delivery counts: gold adds
+   * one, silver or bronze starts again, and a hint-assisted delivery leaves the
+   * run as it was (hints are there to be used).
+   */
+  noteFirstDelivery(medal: Medal, hints: number): { run: number; best: number; newBest: boolean } {
+    const before = this.data.bestGoldRun;
+    if (hints === 0) {
+      this.data.goldRun = medal === 'gold' ? this.data.goldRun + 1 : 0;
+      this.data.bestGoldRun = Math.max(before, this.data.goldRun);
+      this.flush();
+    }
+    return { run: this.data.goldRun, best: this.data.bestGoldRun, newBest: this.data.bestGoldRun > before };
   }
 
   /** The first daily completion for a date is kept; later replays only improve it. */

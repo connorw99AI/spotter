@@ -12,6 +12,25 @@ import type { Theme } from './theme';
 
 const NS = 'http://www.w3.org/2000/svg';
 const f1 = (n: number) => n.toFixed(1);
+type Box = { x: number; y: number; w: number; h: number };
+const grow = (b: Box, m: number): Box => ({ x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m });
+const covers = (a: Box, b: Box) => a.x <= b.x && a.y <= b.y && a.x + a.w >= b.x + b.w && a.y + a.h >= b.y + b.h;
+
+/** A standing game token: ground shadow, a coloured rim with depth, ready for a face on top. */
+function token(r: number, fill: string, deep: string): string {
+  return `<ellipse cy="${f1(r * 0.86)}" rx="${f1(r * 1.02)}" ry="${f1(r * 0.34)}" class="mk-shadow"/>`
+    + `<circle cy="4" r="${r}" fill="${deep}"/><circle r="${r}" fill="${fill}" stroke="#FFFAF0" stroke-width="3.5"/>`;
+}
+/** A soft highlight across the top-left of a token, so it reads as glossy and lit. */
+function gloss(r: number): string {
+  const a = r * 0.72;
+  return `<path d="M${f1(-a * 0.92)} ${f1(-a * 0.36)}A${f1(a)} ${f1(a)} 0 0 1 ${f1(a * 0.3)} ${f1(-a * 0.94)}" class="mk-gloss"/>`;
+}
+const PIP = portraitSvg('Pip', 40).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '');
+const HOUSE_D = 'M-17-4 0-19 17-4V14Q17 18 13 18H-13Q-17 18-17 14Z';
+
+/** Room kept clear of the town on each side, in screen pixels: the floating HUD sits there. */
+export interface Insets { top: number; right: number; bottom: number; left: number }
 
 function el<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number> = {}, inner = ''): SVGElementTagNameMap[K] {
   const e = document.createElementNS(NS, tag);
@@ -47,7 +66,12 @@ export class MapView {
   private readonly gOver: SVGGElement;
   private readonly gFx: SVGGElement;
   private readonly courier: SVGGElement;
-  private readonly box: { x: number; y: number; w: number; h: number };
+  private readonly box: Box;
+  /** The part of the world on screen, and how far out the scenery has been painted. */
+  private view: Box;
+  private painted: Box;
+  private readonly sceneSvg: SVGSVGElement;
+  private readonly ambientSvg: SVGSVGElement;
 
   constructor(readonly town: Town, label: string, private readonly theme: Theme) {
     const pts = town.def.nodes.map((n) => ({ x: n.x, y: n.y }));
@@ -56,7 +80,7 @@ export class MapView {
     let minY = Math.min(...pts.map((p) => p.y)), maxY = Math.max(...pts.map((p) => p.y));
     const pad = 0.52;
     minX -= pad; maxX += pad; minY -= pad; maxY += pad;
-    const minW = 4.0, minH = 4.0;
+    const minW = 3.3, minH = 3.3;
     if (maxX - minX < minW) { const c = (minX + maxX) / 2; minX = c - minW / 2; maxX = c + minW / 2; }
     if (maxY - minY < minH) { const c = (minY + maxY) / 2; minY = c - minH / 2; maxY = c + minH / 2; }
     this.box = { x: minX * U, y: minY * U, w: (maxX - minX) * U, h: (maxY - minY) * U };
@@ -68,12 +92,14 @@ export class MapView {
     }
     this.hitRadius = Math.min(0.46 * minD, 0.5) * U;
 
+    this.view = this.box;
+    this.painted = grow(this.box, 240);
     const viewBox = `${f1(this.box.x)} ${f1(this.box.y)} ${f1(this.box.w)} ${f1(this.box.h)}`;
     const scene = el('svg', { viewBox, preserveAspectRatio: 'xMidYMid meet', class: 'map-scene', 'aria-hidden': 'true' });
-    scene.append(this.staticLayers());
     const ambient = el('svg', { viewBox, preserveAspectRatio: 'xMidYMid meet', class: 'map-ambient', 'aria-hidden': 'true' });
-    ambient.append(this.cloudLayer());
-    ambient.insertAdjacentHTML('afterbegin', waterShimmerSvg(town, theme));
+    this.sceneSvg = scene;
+    this.ambientSvg = ambient;
+    this.paint();
     this.svg = el('svg', {
       viewBox,
       preserveAspectRatio: 'xMidYMid meet',
@@ -98,16 +124,40 @@ export class MapView {
 
   // ─────────────────────────────── static art ───────────────────────────────
 
-  private staticLayers(): SVGGElement {
+  /** Paint (or repaint, wider) the scenery and the drifting ambient layer. */
+  private paint() {
     const g = el('g', { class: 'layer-static', 'aria-hidden': 'true' });
-    g.innerHTML = buildScene(this.town, this.box, this.theme);
-    return g;
+    g.innerHTML = buildScene(this.town, this.box, this.theme, this.painted);
+    this.sceneSvg.replaceChildren(g);
+    this.ambientSvg.replaceChildren(this.cloudLayer());
+    this.ambientSvg.insertAdjacentHTML('afterbegin', waterShimmerSvg(this.town, this.theme));
+  }
+
+  /**
+   * Fill a W×H screen edge to edge, with the town centred in the space the HUD
+   * leaves free. Scenery is painted further out if the screen shows more world.
+   */
+  fitView(W: number, H: number, ins: Insets) {
+    if (W < 40 || H < 40) return;
+    const iw = Math.max(120, W - ins.left - ins.right), ih = Math.max(120, H - ins.top - ins.bottom);
+    // Pixels per map unit; capped so a small town on a big screen doesn't turn into a toy.
+    const k = Math.min(iw / this.box.w, ih / this.box.h, 1.45);
+    const cx = this.box.x + this.box.w / 2, cy = this.box.y + this.box.h / 2;
+    const v = { x: cx - (ins.left + iw / 2) / k, y: cy - (ins.top + ih / 2) / k, w: W / k, h: H / k };
+    this.view = v;
+    const vb = `${f1(v.x)} ${f1(v.y)} ${f1(v.w)} ${f1(v.h)}`;
+    for (const svg of [this.sceneSvg, this.ambientSvg, this.svg]) svg.setAttribute('viewBox', vb);
+    if (!covers(this.painted, v)) {
+      // Round up generously so a rotation or a resize rarely needs another repaint.
+      this.painted = grow(v, 220);
+      this.paint();
+    }
   }
 
   /** Slow cloud shadows drifting over the town (hidden when motion is reduced). */
   private cloudLayer(): SVGGElement {
     const g = el('g', { class: 'layer-clouds', 'aria-hidden': 'true' });
-    const b = this.box;
+    const b = this.painted;
     const r = Math.max(b.w, b.h);
     let s = `<defs><radialGradient id="m-cloud"><stop offset="0" stop-color="#23352B" stop-opacity=".11"/><stop offset=".6" stop-color="#23352B" stop-opacity=".06"/><stop offset="1" stop-color="#23352B" stop-opacity="0"/></radialGradient></defs>`;
     [[0.2, 0.25, 0], [0.7, 0.65, -22], [0.35, 0.9, -45]].forEach(([fx, fy, delay], i) => {
@@ -120,11 +170,12 @@ export class MapView {
 
   /** Seasonal life in the air: petals, butterflies, leaves, fireflies or snow. */
   private particles(): string {
-    const b = this.box;
+    const b = this.view;
     const kind = this.theme.name;
     let seed = 7;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    const n = kind === 'winter' ? 34 : kind === 'evening' ? 16 : kind === 'summer' ? 7 : 18;
+    const dense = Math.min(2.4, Math.max(1, (b.w * b.h) / (520 * 520)));
+    const n = Math.round((kind === 'winter' ? 34 : kind === 'evening' ? 16 : kind === 'summer' ? 7 : 18) * dense);
     let s = `<g class="particles particles-${kind}">`;
     for (let i = 0; i < n; i++) {
       const x = b.x + rnd() * b.w, y = b.y + rnd() * b.h;
@@ -225,7 +276,9 @@ export class MapView {
     const segs = this.routeSegments(route);
     if (!segs.length) { this.gRoute.innerHTML = ''; return; }
     const d = pathD(segs);
-    let s = `<path d="${d}" class="route-casing"/><path d="${d}" class="route-line${dim ? ' dim' : ''}"/>`;
+    const total = segs.reduce((a, g) => a + g.len, 0);
+    // A bright dashed current flowing along the line shows its direction at a glance.
+    let s = `<path d="${d}" class="route-casing"/><path d="${d}" class="route-line${dim ? ' dim' : ''}"/>${dim ? '' : `<path d="${d}" class="route-flow" style="--len:${f1(total)}"/>`}`;
     // Direction chevrons, one per street traversal.
     for (const sg of segs) {
       if (sg.arrive === undefined || sg.len < 30) continue;
@@ -269,7 +322,7 @@ export class MapView {
     const t = this.town;
     let s = '';
     const dp = nodePt(t, t.depot);
-    s += `<g class="mk mk-depot${focus.includes(t.depot) ? ' focus' : ''}" transform="translate(${f1(dp.x)} ${f1(dp.y)})"><g class="mk-body"><circle r="23" class="mk-depot-disc"/><g transform="scale(1.05)">${homeIcon}</g></g></g>`;
+    s += `<g class="mk mk-depot${focus.includes(t.depot) ? ' focus' : ''}" transform="translate(${f1(dp.x)} ${f1(dp.y)})"><g class="mk-body">${token(23, C.forest, C.forestDeep)}<circle r="17" fill="${C.forest}"/><g transform="scale(1.1)">${homeIcon}</g>${gloss(23)}</g></g>`;
     for (const shop of t.def.shops) {
       const p = nodePt(t, shop.node);
       const col = shopColour[shop.kind];
@@ -288,8 +341,8 @@ export class MapView {
       if (!done && fresh !== undefined) extra += `<g transform="translate(0 27)"><rect x="-17" y="-9" width="34" height="18" rx="9" class="mk-fresh"/><path d="M-9.5-4.5v9M-13.4-2.2l7.8 4.4M-13.4 2.2l7.8-4.4" class="mk-fresh-ico"/><text x="5" y="5" class="mk-fresh-t">${fresh}</text></g>`;
       if (done) extra += `<g transform="translate(17 -17)"><circle r="9" fill="${C.moss}" stroke="#FFFAF0" stroke-width="2"/><path d="M-4 0l3 3 5-6" fill="none" stroke="#FFFAF0" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g>`;
       s += `<g class="mk mk-shop${done ? ' done' : ''}${focus.includes(shop.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
-        <g class="mk-face"><circle r="23" fill="${col.fill}" stroke="#FFFAF0" stroke-width="4"/><circle r="16" fill="#FFFAF0"/>
-        <g transform="scale(.92)">${itemIcon[shop.kind]}</g></g>${extra}</g></g>`;
+        <g class="mk-face">${token(23, col.fill, col.deep)}<circle r="16" fill="#FFFAF0"/>
+        <g transform="scale(.92)">${itemIcon[shop.kind]}</g>${gloss(23)}</g>${extra}</g></g>`;
     }
     for (const house of t.def.houses) {
       const p = nodePt(t, house.node);
@@ -301,9 +354,15 @@ export class MapView {
         bubbles += `<g transform="translate(${19 + j * 9} ${-17 - j * 3})"><circle r="11" fill="#FFFAF0" stroke="${shopColour[k].deep}" stroke-width="1.6"/><g transform="scale(.6)">${itemIcon[k]}</g></g>`;
       });
       if (delivered) bubbles = `<g transform="translate(18 -16)"><circle r="10" fill="${C.moss}" stroke="#FFFAF0" stroke-width="2"/><path d="M-4.5 0l3 3.2 5.6-6.4" fill="none" stroke="#FFFAF0" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></g>`;
-      s += `<g class="mk mk-house${delivered ? ' done' : ''}${focus.includes(house.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
-        <path d="M-19-9 0-27 19-9Z" class="mk-roof"/>
-        <circle r="19" class="mk-house-disc"/><text y="7.5" class="mk-letter">${house.letter}</text>${bubbles}</g></g>`;
+      // Ready: something for this house is in the basket, so it hops to say "me next".
+      const ready = !delivered && ids.some((i) => state.orders[i].status === 1);
+      s += `<g class="mk mk-house${delivered ? ' done' : ''}${ready ? ' ready' : ''}${focus.includes(house.node) ? ' focus' : ''}" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="mk-body">
+        <ellipse cy="19" rx="20" ry="6.5" class="mk-shadow"/>
+        <path d="${HOUSE_D}" transform="translate(0 4)" class="mk-house-side"/>
+        <path d="${HOUSE_D}" class="mk-house-disc"/>
+        <path d="M-22-3.5 0-24.5 22-3.5 17.5.5 0-15.5-17.5.5Z" class="mk-roof"/>
+        <rect x="8" y="-21" width="5.5" height="9" rx="1" class="mk-roof"/>
+        <text y="12.5" class="mk-letter">${house.letter}</text>${bubbles}</g></g>`;
     }
     // Garden gates: shut until their house has its delivery, then swung open.
     t.edges.forEach((e, ei) => {
@@ -351,6 +410,13 @@ export class MapView {
     if (o.end) {
       const p = nodePt(this.town, o.end);
       over += `<circle cx="${f1(p.x)}" cy="${f1(p.y)}" r="29" class="end-ring"/>`;
+      // Pip, hovering over wherever the route has reached: "you are here".
+      over += `<g class="pip-pin" transform="translate(${f1(p.x)} ${f1(p.y)})"><g class="pip-pin-bob">
+        <ellipse cy="-27" rx="8" ry="2.6" class="pip-pin-shadow"/>
+        <path d="M-7-41 0-30 7-41Z" class="pip-pin-tail"/>
+        <circle cy="-52" r="17" class="pip-pin-ring"/>
+        <svg x="-15" y="-67" width="30" height="30" viewBox="-20 -20 40 40">${PIP}</svg>
+      </g></g>`;
     }
     if (o.selected) {
       const p = nodePt(this.town, o.selected);

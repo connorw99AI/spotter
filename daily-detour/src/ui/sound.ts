@@ -5,7 +5,10 @@
  */
 import { isNative, nativeTap } from '../platform/native';
 
-export type Cue = 'step' | 'erase' | 'pickup' | 'deliver' | 'blocked' | 'bell' | 'complete' | 'tap' | 'stamp';
+/** Semitone offsets for climbing cues: a major pentatonic run. */
+const LADDER = [0, 2, 4, 7, 9, 12, 14];
+
+export type Cue = 'step' | 'erase' | 'pickup' | 'deliver' | 'blocked' | 'bell' | 'complete' | 'tap' | 'stamp' | 'gold';
 
 interface Manifest { cues?: Partial<Record<Cue, string>>; music?: string }
 
@@ -164,15 +167,21 @@ export class Sound {
     src.stop(start + dur + 0.02);
   }
 
-  play(cue: Cue) {
+  /**
+   * Play a cue. `step` climbs a pentatonic ladder, so a run of pickups or
+   * deliveries in one route rings higher each time.
+   */
+  play(cue: Cue, step = 0) {
     if (!this.enabled) return;
     const ctx = this.ensure();
     if (!ctx) return;
     const t = ctx.currentTime + 0.005;
+    const up = Math.pow(2, LADDER[Math.max(0, Math.min(step, LADDER.length - 1))] / 12);
     const buf = this.buffers.get(cue);
     if (buf) {
       const src = ctx.createBufferSource();
       src.buffer = buf;
+      src.playbackRate.value = up;
       src.connect(this.sfx!);
       src.start(t);
       return;
@@ -182,13 +191,13 @@ export class Sound {
       case 'step': this.tone(720, t, 0.05, 'sine', 0.05); this.hiss(t, 0.03, 0.05, 3200, 3); break;
       case 'erase': this.tone(480, t, 0.07, 'sine', 0.045, { slideTo: 380 }); this.hiss(t, 0.03, 0.03, 1800, 3); break;
       case 'pickup':
-        this.tone(784, t, 0.12, 'triangle', 0.07, { room: true });
-        this.tone(1175, t + 0.07, 0.2, 'triangle', 0.06, { room: true });
+        this.tone(784 * up, t, 0.12, 'triangle', 0.07, { room: true });
+        this.tone(1175 * up, t + 0.07, 0.2, 'triangle', 0.06, { room: true });
         this.hiss(t, 0.04, 0.04, 5000, 2);
         break;
       case 'deliver':
         // A small hand bell: a fundamental with bright, slightly inharmonic partials.
-        for (const [f, g, d] of [[1318, 0.08, 1.1], [2637, 0.03, 0.7], [3520, 0.018, 0.5], [1976, 0.03, 0.9]] as const) this.tone(f, t, d, 'sine', g, { room: true });
+        for (const [f, g, d] of [[1318, 0.08, 1.1], [2637, 0.03, 0.7], [3520, 0.018, 0.5], [1976, 0.03, 0.9]] as const) this.tone(f * up, t, d, 'sine', g * (up > 1.5 ? 0.8 : 1), { room: true });
         break;
       case 'blocked': this.tone(170, t, 0.18, 'sine', 0.1, { slideTo: 105 }); this.hiss(t, 0.08, 0.05, 400, 1); break;
       case 'bell':
@@ -196,6 +205,10 @@ export class Sound {
         for (const off of [0, 0.14]) for (const [f, g] of [[2093, 0.05], [2793, 0.03], [3951, 0.015]] as const) this.tone(f, t + off, 0.45, 'sine', g, { room: true });
         break;
       case 'stamp': this.tone(95, t, 0.22, 'sine', 0.22, { slideTo: 60 }); this.hiss(t, 0.09, 0.12, 900, 0.7); break;
+      case 'gold':
+        // A quick shimmer upwards: the route is as short as it gets.
+        [1568, 1976, 2349, 3136].forEach((f, i) => this.tone(f, t + i * 0.055, 0.5, 'sine', 0.035, { room: true }));
+        break;
       case 'complete':
         [784, 988, 1175, 1568].forEach((f, i) => this.tone(f, t + i * 0.09, 0.6, 'triangle', 0.055, { room: true }));
         this.tone(2093, t + 0.4, 0.9, 'sine', 0.03, { room: true });

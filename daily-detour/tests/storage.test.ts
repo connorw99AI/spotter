@@ -44,6 +44,21 @@ describe('saved progress', () => {
     expect(s.levelRecord('p', 1)).toMatchObject({ bestMoves: 14, bestMedal: 'gold', completions: 2 });
   });
 
+  it('counts first-try golds in a row; hints neither add nor reset', () => {
+    const mem = new MemoryStore();
+    const s = new SaveStore(mem);
+    expect(s.noteFirstDelivery('gold', 0)).toEqual({ run: 1, best: 1, newBest: true });
+    expect(s.noteFirstDelivery('gold', 0)).toEqual({ run: 2, best: 2, newBest: true });
+    expect(s.noteFirstDelivery('silver', 2)).toEqual({ run: 2, best: 2, newBest: false });
+    expect(s.noteFirstDelivery('gold', 1)).toEqual({ run: 2, best: 2, newBest: false });
+    expect(s.noteFirstDelivery('bronze', 0)).toEqual({ run: 0, best: 2, newBest: false });
+    expect(s.noteFirstDelivery('gold', 0)).toEqual({ run: 1, best: 2, newBest: false });
+    const b = new SaveStore(mem);
+    expect([b.data.goldRun, b.data.bestGoldRun]).toEqual([1, 2]);
+    expect(parseSave(JSON.stringify({ version: 1, goldRun: -3, bestGoldRun: 'x' }))).toMatchObject({ goldRun: 0, bestGoldRun: 0 });
+    expect(parseSave(JSON.stringify({ version: 1 }))).toMatchObject({ goldRun: 0, bestGoldRun: 0 });
+  });
+
   it('ignores records from an older puzzle revision', () => {
     const s = new SaveStore(new MemoryStore());
     s.recordCompletion('p', 1, 14, 'gold', 0);
