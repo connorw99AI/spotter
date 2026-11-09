@@ -14,9 +14,12 @@ import { residentsFor, thankYouNote } from '../game/residents';
 import { runStats } from '../game/meta';
 import { cleverMoments } from '../game/clever';
 import type { AppServices } from './appTypes';
-import { backIcon, basketIcon, clearIcon, fragileIcon, heartIcon, sparkIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
+import { coinIcon, backIcon, basketIcon, clearIcon, fragileIcon, heartIcon, sparkIcon, hintIcon, itemIcon, playIcon, redoIcon, shareIcon, undoIcon, shopColour } from './art';
 import { h, icon, setKids } from './dom';
 import { MapView } from './mapView';
+import { coinBalance, coinsEarnedBy, lookTheme, spendCoins } from './economy';
+import { HINT_COST } from '../game/shop';
+import { neighbourOf } from '../data/neighbours';
 import { Ride } from './ride';
 import { themeFor, themeForEvent, type Theme } from './theme';
 import { eventOn } from '../game/meta';
@@ -92,6 +95,7 @@ export class PlayScreen {
   /** Whether the route was a finished gold route at the last render (null before the first). */
   private wasGold: boolean | null = null;
   private coachMsg: Message | null = null;
+  private coinsGained = 0;
   private coachTimer = 0;
 
   // DOM
@@ -122,7 +126,9 @@ export class PlayScreen {
     const draft = app.store.draft(this.draftKey, p.id, p.rev);
     this.editor = new RouteEditor(this.town, draft?.route);
     this.hints = draft?.hints ?? 0;
-    this.theme = opts.mode === 'daily' ? themeForEvent(eventOn(opts.dateKey!), p) : themeFor(p);
+    // A chosen map look applies everywhere except a seasonal event's dailies.
+    const ev = opts.mode === 'daily' ? eventOn(opts.dateKey!) : null;
+    this.theme = (ev ? null : lookTheme(app)) ?? (opts.mode === 'daily' ? themeForEvent(ev, p) : themeFor(p));
     this.map = new MapView(this.town, `Map of ${p.title}. Draw a route from your cottage.`, this.theme);
     const chapter = chapterOf(p);
     const ruleTip = chapter?.featured && RULE_INTRO[chapter.featured] && p.number === 1 ? RULE_INTRO[chapter.featured] : undefined;
@@ -144,7 +150,7 @@ export class PlayScreen {
     const label = this.opts.mode === 'daily' ? `Daily #${dailyNumber(this.opts.dateKey!)}` : puzzleLabel(p);
     this.hintBtn = h('button', { class: 'btn-icon btn-hint', type: 'button', 'aria-label': 'Hints', onclick: () => this.toggleHints() }, icon(hintIcon, 22), h('span', { class: 'btn-hint-label' }, 'Hint'));
     const top = this.topEl = h('header', { class: 'play-top' },
-      h('button', { class: 'btn-icon', type: 'button', 'aria-label': this.opts.mode === 'daily' ? 'Back to town' : 'Back to the route book', onclick: () => this.leave() }, icon(backIcon, 22)),
+      h('button', { class: 'btn-icon', type: 'button', 'aria-label': this.opts.mode === 'daily' ? 'Back to town' : neighbourOf(p.id) ? 'Back to Meadow Lane' : 'Back to the route book', onclick: () => this.leave() }, icon(backIcon, 22)),
       h('div', { class: 'play-title' }, h('span', { class: 'play-kicker' }, label), h('h1', {}, p.title)),
       this.hintBtn,
     );
@@ -519,6 +525,8 @@ export class PlayScreen {
 
   private async requestHint(stage: 2 | 3) {
     const key = this.routeKey();
+    const cost = HINT_COST[stage];
+    if (coinBalance(this.app) < cost) { this.renderHints(); return; }
     const a = await this.fetchAdvice();
     if (!a || !this.alive || key !== this.routeKey()) return;
     let text: string;
@@ -538,6 +546,7 @@ export class PlayScreen {
       text = `${describeDoom(this.town, a.reason)} To recover, undo back to move ${k}.`;
       action = { label: `Undo to move ${k}`, run: () => this.keepMoves(k) };
     } else if (stage === 2) {
+      if (!spendCoins(this.app, cost)) return;
       text = describeObjective(this.town, a.next!);
       this.hintFocus.objective = a.next!.node;
       const total = this.editor.moves + (a.remaining ?? 0);
@@ -548,6 +557,7 @@ export class PlayScreen {
         action = { label: `Undo to move ${k}`, run: () => this.keepMoves(k) };
       }
     } else {
+      if (!spendCoins(this.app, cost)) return;
       const next = a.path![0];
       text = `Ride to ${describeNodeForStep(this.town, next)}.`;
       if (a.goldUndoTo !== undefined) text += ' (That’s the best step from here, though gold now needs an earlier change.)';
@@ -573,14 +583,18 @@ export class PlayScreen {
     }
     const lastStage = Math.max(1, ...this.hintLog.filter((e) => e.stage === 1 || e.routeKey === key).map((e) => e.stage));
     const nextStage = (Math.min(3, lastStage + 1)) as 2 | 3;
-    const more = h('button', { class: 'btn btn-quiet hint-more', type: 'button', onclick: () => void this.requestHint(nextStage) },
-      nextStage === 2 ? 'Show the next objective' : 'Show one step');
+    const cost = HINT_COST[nextStage];
+    const coins = coinBalance(this.app);
+    const more = h('button', { class: 'btn btn-quiet hint-more', type: 'button', disabled: coins < cost, onclick: () => void this.requestHint(nextStage) },
+      nextStage === 2 ? 'Show the next objective' : 'Show one step', h('span', { class: 'hint-cost', 'aria-label': `${cost} coins` }, icon(coinIcon, 14), String(cost)));
     setKids(this.hintPanel,
       h('header', { class: 'hint-head' }, h('h2', {}, 'Hints'),
         h('button', { class: 'btn-icon hint-close', type: 'button', 'aria-label': 'Close hints', onclick: () => this.toggleHints(false) }, icon(clearIcon, 18))),
       list,
       this.ride ? null : more,
-      h('p', { class: 'hint-foot' }, `Hints this round: ${this.hints}. They appear on your result, and nothing else changes.`),
+      h('p', { class: 'hint-foot' }, coins < cost
+        ? `You have ${coins} coins, not quite enough. Deliveries earn coins (gold pays most), and if your route can't finish, the way back is always free.`
+        : `You have ${coins} coins. The first nudge is free; deliveries earn more. Hints this round: ${this.hints}.`),
     );
     // Show the newest hint without scrolling anything but the panel itself.
     requestAnimationFrame(() => { this.hintPanel.scrollTop = this.hintPanel.scrollHeight; });
@@ -661,6 +675,7 @@ export class PlayScreen {
     const chapter = chapterOf(p);
     const before = chapter ? chapterDelivered(this.app, chapter) : 0;
     const route = [...this.editor.route];
+    const coinsBefore = coinsEarnedBy(this.app);
     const res = this.app.store.recordCompletion(p.id, p.rev, moves, medal, this.hints, route);
     const streak = res.previousBest === undefined ? this.app.store.noteFirstDelivery(medal, this.hints) : null;
     if (this.opts.mode === 'daily') {
@@ -671,7 +686,11 @@ export class PlayScreen {
     this.app.sound.play('complete');
     this.app.haptics([20, 60, 30]);
     const after = chapter ? chapterDelivered(this.app, chapter) : 0;
-    const letter = chapter ? STORY[chapter.id]?.letters.find((l) => l.at > before && l.at <= after) : undefined;
+    const nb = neighbourOf(p.id);
+    const letter = nb
+      ? (res.previousBest === undefined ? { at: 0, from: nb.name, text: nb.thanks[p.number - 1] } : undefined)
+      : chapter ? STORY[chapter.id]?.letters.find((l) => l.at > before && l.at <= after) : undefined;
+    this.coinsGained = coinsEarnedBy(this.app) - coinsBefore;
     this.showDocket(moves, medal, res.newBest, res.previousBest, heartCount(this.app) - heartsBefore, letter, streak);
   }
 
@@ -696,7 +715,9 @@ export class PlayScreen {
         ? `Gold is ${this.t.gold} moves — ${moves - this.t.gold} to shave off.`
         : `A fine delivery. Silver is ${this.t.silver} moves or fewer, gold ${this.t.gold}.`;
     const next = this.opts.mode === 'practice' ? this.app.nextPuzzle(p) : undefined;
-    const primary = this.opts.mode === 'daily'
+    const primary = neighbourOf(p.id)
+      ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'village', tab: 'neighbours' }) }, 'Back to Meadow Lane')
+      : this.opts.mode === 'daily'
       ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'home' }) }, 'Back to town')
       : next
         ? h('button', { class: 'btn btn-primary', type: 'button', onclick: () => this.app.go({ screen: 'play', puzzleId: next.id, mode: 'practice' }) }, `Next: ${next.title}`)
@@ -713,7 +734,9 @@ export class PlayScreen {
       moments.length ? h('ul', { class: 'docket-moments' }, ...moments.slice(0, 2).map((m) => h('li', { class: `moment moment-${m.kind}` }, icon(sparkIcon, 18), m.text))) : null,
       streak && medal === 'gold' && this.hints === 0 && streak.run >= 2
         ? h('p', { class: 'gold-run' }, h('b', {}, String(streak.run)), h('span', {}, 'first-try golds in a row'), streak.newBest && streak.run >= 3 ? h('i', {}, 'best yet') : null) : null,
-      heartsGained > 0 ? h('p', { class: 'docket-hearts' }, icon(heartIcon, 18), `+${heartsGained} ${heartsGained === 1 ? 'heart' : 'hearts'} for the village`) : null,
+      heartsGained > 0 || this.coinsGained > 0 ? h('p', { class: 'docket-gains' },
+        heartsGained > 0 ? h('span', { class: 'docket-hearts' }, icon(heartIcon, 18), `+${heartsGained} ${heartsGained === 1 ? 'heart' : 'hearts'} for the village`) : null,
+        this.coinsGained > 0 ? h('span', { class: 'docket-coins' }, icon(coinIcon, 18), `+${this.coinsGained} coins`) : null) : null,
       letter ? letterCard(letter, true) : null,
       h('ul', { class: 'docket-notes' }, ...notes),
       h('dl', { class: 'docket-facts' },
@@ -935,7 +958,7 @@ export class PlayScreen {
   }
 
   private leave() {
-    this.app.go(this.opts.mode === 'daily' ? { screen: 'home' } : { screen: 'book' });
+    this.app.go(neighbourOf(this.opts.puzzle.id) ? { screen: 'village', tab: 'neighbours' } : this.opts.mode === 'daily' ? { screen: 'home' } : { screen: 'book' });
   }
 
   focusMap() {

@@ -54,12 +54,22 @@ export interface SaveData {
   /** First-try golds in a row (without hints), and the longest such run. */
   goldRun: number;
   bestGoldRun: number;
+  /** Coins spent so far; the balance is what deliveries earned minus this. */
+  coinsSpent: number;
+  /** Shop items bought (free starter items are implied). */
+  owned: string[];
+  /** Decorations placed in the village, by spot. */
+  placed: Record<string, string>;
+  /** What Pip is wearing, by part. */
+  wear: Record<string, string>;
+  /** The chosen map look ('look-seasonal' follows the book). */
+  look: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = { motion: 'system', sound: true, music: true, haptics: true, speed: 'relaxed', reminder: false, reminderHour: 9 };
 
 export function emptySave(): SaveData {
-  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {}, restored: [], goldRun: 0, bestGoldRun: 0 };
+  return { version: SAVE_VERSION, levels: {}, daily: {}, settings: { ...DEFAULT_SETTINGS }, drafts: {}, restored: [], goldRun: 0, bestGoldRun: 0, coinsSpent: 0, owned: [], placed: {}, wear: {}, look: 'look-seasonal' };
 }
 
 const MEDALS: readonly string[] = ['gold', 'silver', 'bronze'];
@@ -115,6 +125,12 @@ export function parseSave(raw: string | null): SaveData {
   if (isObj(data.daily)) for (const [k, v] of Object.entries(data.daily)) { const r = cleanDaily(v); if (r && DATE_KEY.test(k)) save.daily[k] = r; }
   if (isObj(data.drafts)) for (const [k, v] of Object.entries(data.drafts)) { const r = cleanDraft(v); if (r && r.key === k) save.drafts[k] = r; }
   save.settings = cleanSettings(data.settings);
+  const ITEM = /^[a-z0-9-]{1,24}$/;
+  if (isCount(data.coinsSpent)) save.coinsSpent = data.coinsSpent;
+  if (Array.isArray(data.owned)) save.owned = [...new Set(data.owned.filter((x): x is string => typeof x === 'string' && ITEM.test(x)))];
+  if (isObj(data.placed)) for (const [k, v] of Object.entries(data.placed)) if (/^s\d{1,2}$/.test(k) && typeof v === 'string' && ITEM.test(v)) save.placed[k] = v;
+  if (isObj(data.wear)) for (const [k, v] of Object.entries(data.wear)) if (['bike', 'helmet', 'scarf', 'jacket', 'crate'].includes(k) && typeof v === 'string' && ITEM.test(v)) save.wear[k] = v;
+  if (typeof data.look === 'string' && /^look-[a-z]{1,12}$/.test(data.look)) save.look = data.look;
   if (isCount(data.goldRun)) save.goldRun = data.goldRun;
   if (isCount(data.bestGoldRun)) save.bestGoldRun = Math.max(data.bestGoldRun, save.goldRun);
   if (Array.isArray(data.restored)) save.restored = [...new Set(data.restored.filter((x): x is string => typeof x === 'string' && /^[a-z-]{1,24}$/.test(x)))];
@@ -207,6 +223,39 @@ export class SaveStore {
       this.flush();
     }
     return { run: this.data.goldRun, best: this.data.bestGoldRun, newBest: this.data.bestGoldRun > before };
+  }
+
+  /** Record coins spent (the caller checks the balance first). */
+  spend(coins: number) {
+    if (!(coins > 0)) return;
+    this.data.coinsSpent += Math.round(coins);
+    this.flush();
+  }
+
+  /** Buy a shop item once: it is owned for good. Returns false if already owned. */
+  buy(id: string, price: number): boolean {
+    if (this.data.owned.includes(id)) return false;
+    this.data.owned.push(id);
+    this.data.coinsSpent += Math.max(0, Math.round(price));
+    this.flush();
+    return true;
+  }
+
+  /** Put a decoration in a spot (or clear the spot with null). A decoration stands in one spot at a time. */
+  place(slot: string, id: string | null) {
+    for (const [k, v] of Object.entries(this.data.placed)) if (v === id) delete this.data.placed[k];
+    if (id) this.data.placed[slot] = id; else delete this.data.placed[slot];
+    this.flush();
+  }
+
+  setWear(part: string, id: string) {
+    this.data.wear[part] = id;
+    this.flush();
+  }
+
+  setLook(id: string) {
+    this.data.look = id;
+    this.flush();
   }
 
   /** The first daily completion for a date is kept; later replays only improve it. */

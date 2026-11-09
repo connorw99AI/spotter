@@ -1,7 +1,9 @@
 import { PROJECTS } from '../game/meta';
 import { C, courierSvg } from './art';
 import { seeded } from './geometry';
+import { BRONZE, decorArt } from './decorArt';
 import { personSvg, type Outfit, type PersonOpts } from './people';
+import { NEIGHBOURS } from '../data/neighbours';
 import { benchArt, bushArt, flowerBedArt, houseArt, lampArt, pineArt, randomHouseLook, shedArt, shopArt, treeArt } from './sceneryArt';
 import type { Theme } from './theme';
 
@@ -16,7 +18,7 @@ type P2 = [number, number];
 type Cubic = [P2, P2, P2, P2];
 
 /** The part of the picture that must always be on screen. */
-export const VIEW = { x: -8, y: 52, w: 376, h: 376 };
+export const VIEW = { x: -8, y: 52, w: 376, h: 458 };
 
 const LANE: Cubic[] = [
   [[-520, 170], [-300, 150], [-150, 170], [-20, 160]],
@@ -40,6 +42,13 @@ function sample(segs: Cubic[], n = 32): P2[] {
   }
   return out;
 }
+/** Meadow Lane, along the bottom, where new neighbours build. */
+const MEADOW: Cubic[] = [
+  [[-760, 446], [-480, 440], [-220, 448], [-40, 438]],
+  [[-40, 438], [120, 428], [300, 444], [520, 432]],
+  [[520, 432], [700, 422], [900, 440], [1180, 436]],
+];
+const MEADOW_PTS = sample(MEADOW);
 const LANE_PTS = sample(LANE);
 const RIVER_PTS = sample(RIVER);
 const distTo = (pts: P2[], x: number, y: number) => Math.min(...pts.map(([px, py]) => Math.hypot(px - x, py - y)));
@@ -49,6 +58,32 @@ export const SITES: Record<string, P2> = {
   lane: [24, 186], boxes: [100, 132], bench: [62, 302], lamps: [160, 186], fountain: [204, 298], bakery: [276, 126],
   orchard: [84, 374], bridge: [296, 152], allotments: [266, 374], bandstand: [266, 278], bunting: [200, 214], fete: [312, 264],
 };
+
+/** Decoration spots, each with what grows there until something is placed. */
+export const SLOTS: Record<string, { at: P2; filler: 'tree' | 'bush' | 'pine' | 'flowers' }> = {
+  s1: { at: [110, 250], filler: 'flowers' }, s2: { at: [190, 100], filler: 'tree' }, s3: { at: [306, 190], filler: 'bush' }, s4: { at: [18, 292], filler: 'pine' },
+  s5: { at: [76, 486], filler: 'flowers' }, s6: { at: [178, 476], filler: 'bush' }, s7: { at: [282, 486], filler: 'flowers' },
+};
+/** Cottage plots along Meadow Lane for the neighbours who move in. */
+export const PLOTS: Record<string, P2> = { mabel: [30, 480], bram: [122, 482], ivy: [234, 482], felix: [330, 480] };
+const COTTAGES: Record<string, { roof: string; roofShade: string; wall: string; wallShade: string; door: string }> = {
+  mabel: { roof: '#C98A4B', roofShade: '#9E6732', wall: '#F3E3B8', wallShade: '#D7C392', door: '#2F5D46' },
+  bram: { roof: '#8E7B9B', roofShade: '#6E5D7B', wall: '#E4EBE0', wallShade: '#C6D0C1', door: '#4D6E8C' },
+  ivy: { roof: '#B65A55', roofShade: '#8D3F3B', wall: '#F6E7CB', wallShade: '#DCC7A3', door: '#B85C38' },
+  felix: { roof: '#7E9A6A', roofShade: '#5F7A4E', wall: '#F4DCD2', wallShade: '#D9BDB1', door: '#8A5A7A' },
+};
+/** What each neighbour keeps outside their door. */
+function tradeArt(id: string): string {
+  switch (id) {
+    case 'mabel': return [0, 12].map((x) => `<g transform="translate(${x} 0)"><ellipse cx="2" cy="1" rx="6" ry="1.8" ${SHADOW}/><rect x="-5" y="-12" width="10" height="12" rx="1" fill="#FFF6DA" stroke="#B08F3A" stroke-width=".8"/><path d="M-5-8h10M-5-4h10" stroke="#E0B04A" stroke-width="1"/><path d="M-6-12h12l-1-3H-5Z" fill="#B08F3A"/><rect x="-1.4" y="-3" width="2.8" height="1.6" fill="#5C4A3A"/></g>`).join('')
+      + `<g class="bees">${[[4, -20], [10, -24], [-2, -26]].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="1.1" fill="#3B2A20"/><circle cx="${x}" cy="${y}" r=".7" fill="#F2CF6E"/>`).join('')}</g>`;
+    case 'bram': return `<ellipse cx="2" cy="1" rx="6" ry="1.8" ${SHADOW}/><path d="M0 0V-20" stroke="#3D4A43" stroke-width="2"/><circle cy="-24" r="7" fill="#FFFAF0" stroke="#3D4A43" stroke-width="1.6"/><path d="M0-24v-4.6M0-24l3.4 1.6" stroke="#23352B" stroke-width="1.1" stroke-linecap="round" class="clock-hand"/><circle cy="-24" r=".9" fill="#E0B04A"/>`;
+    case 'ivy': return `<ellipse cx="2" cy="1" rx="6" ry="1.8" ${SHADOW}/><rect x="-4.6" y="-15" width="9.2" height="15" rx="1.5" fill="#C8352B" stroke="#8E241D" stroke-width=".8"/><path d="M-4.6-15a4.6 3 0 0 1 9.2 0" fill="#B02E25" stroke="#8E241D" stroke-width=".8"/><rect x="-3" y="-11" width="6" height="1.4" fill="#23352B"/><rect x="-2.2" y="-7" width="4.4" height="3" rx=".6" fill="#FFFAF0" opacity=".85"/>`;
+    case 'felix': return `<ellipse cx="2" cy="1" rx="8" ry="2" ${SHADOW}/><path d="M-6 0-1-24M6 0 1-24M0-8V2" stroke="#8C6A45" stroke-width="1.4" stroke-linecap="round"/><rect x="-8" y="-24" width="16" height="12" fill="#FFFAF0" stroke="#7A5C3E" stroke-width=".8"/><path d="M-6-15c3-4 6-4 12-6" fill="none" stroke="#6FA7AE" stroke-width="2"/><circle cx="3" cy="-20" r="2" fill="#E0B04A"/><path d="M-6-14h12" stroke="#7FAF55" stroke-width="1.6"/>`;
+    default: return '';
+  }
+}
+const NEIGHBOUR_PROPS: Record<string, PersonOpts> = { mabel: { prop: 'basket' }, bram: { pose: 'wave' }, ivy: { prop: 'tray' }, felix: { pose: 'wave', flip: true } };
 
 const OUTFITS: Record<string, Outfit> = {
   'Mr Fennick': { coat: '#8C6A45', legs: '#3D4A43' },
@@ -192,8 +227,14 @@ export interface VillageArtOpts {
   theme: Theme;
   restored: ReadonlySet<string>;
   kept: ReadonlySet<string>;
-  /** The project restored just now, to celebrate. */
+  /** What just happened, to celebrate: a project id, 'slot:<id>' or 'nb:<id>'. */
   fresh: string | null;
+  /** Decorations by spot. */
+  placed: Readonly<Record<string, string>>;
+  /** Show the spots a decoration can go (while placing one). */
+  placing: boolean;
+  /** Neighbours who have moved in. */
+  neighbours: ReadonlySet<string>;
   /** Signposts: every project there are hearts enough for, and the next one to save up for. */
   signs: { id: string; cost: number; ready: boolean }[];
   animate: boolean;
@@ -213,13 +254,13 @@ export function villageArt(o: VillageArtOpts): string {
   let s = `<rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="${t.lawn}"/><rect x="${big.x}" y="${big.y}" width="${big.w}" height="${big.h}" fill="url(#v-tufts)"/>`;
 
   // ── Countryside around the village: hedged fields, then trees and cottages. ──
-  const core = (x: number, y: number, m: number) => x > -m && x < 360 + m && y > 40 - m && y < 424 + m;
+  const core = (x: number, y: number, m: number) => x > -m && x < 360 + m && y > 40 - m && y < 514 + m;
   const fields: { x: number; y: number; w: number; h: number }[] = [];
-  for (const [fx, fy] of [[-200, 40], [-330, 180], [-170, 260], [-360, -20], [400, 150], [540, 40], [420, 300], [580, 260], [-60, 450], [120, 452], [260, 456], [-250, 400], [480, 430], [60, -110], [-120, -100]] as P2[]) {
+  for (const [fx, fy] of [[-200, 40], [-330, 180], [-170, 260], [-360, -20], [400, 150], [540, 40], [420, 300], [580, 260], [-60, 560], [120, 566], [260, 562], [-250, 400], [480, 430], [60, -110], [-120, -100]] as P2[]) {
     const w = 110 + wide() * 60, h = 72 + wide() * 40;
     const x = fx + (wide() - 0.5) * 30, y = fy + (wide() - 0.5) * 20;
     const cx = x + w / 2, cy = y + h / 2, r = Math.max(w, h) / 2;
-    if (core(cx, cy, r + 10) || distTo(LANE_PTS, cx, cy) < r + 22 || distTo(RIVER_PTS, cx, cy) < r + 30) continue;
+    if (core(cx, cy, r + 10) || distTo(LANE_PTS, cx, cy) < r + 22 || distTo(MEADOW_PTS, cx, cy) < r + 20 || distTo(RIVER_PTS, cx, cy) < r + 30) continue;
     fields.push({ x, y, w, h });
     s += plot(t, Math.round(x), Math.round(y), Math.round(w), Math.round(h), ['url(#v-rows)', 'url(#v-stripes)', t.meadow][Math.floor(wide() * 3)]);
   }
@@ -227,7 +268,7 @@ export function villageArt(o: VillageArtOpts): string {
     for (let x = big.x + 20; x < big.x + big.w; x += 30) {
       const px = x + (wide() - 0.5) * 22, py = y + (wide() - 0.5) * 22;
       const roll = wide(), tone = Math.floor(wide() * 8), sc = 0.9 + wide() * 0.3;
-      if (core(px, py, 6) || distTo(LANE_PTS, px, py) < 28 || distTo(RIVER_PTS, px, py) < 34) continue;
+      if (core(px, py, 6) || distTo(LANE_PTS, px, py) < 28 || distTo(MEADOW_PTS, px, py) < 24 || distTo(RIVER_PTS, px, py) < 34) continue;
       if (fields.some((f) => px > f.x - 12 && px < f.x + f.w + 12 && py > f.y - 14 && py < f.y + f.h + 8)) continue;
       const art = roll < 0.3 ? treeArt(t, tone, sc) : roll < 0.42 ? pineArt(t, sc) : roll < 0.5 ? bushArt(t, sc) : roll < 0.54 ? flowerBedArt(t, tone, sc) : roll < 0.57 ? houseArt(randomHouseLook(wide, t.lit), 0.95) : '';
       if (art) add(py, at(px, py, art));
@@ -239,6 +280,10 @@ export function villageArt(o: VillageArtOpts): string {
   s += `<ellipse cx="165" cy="262" rx="101" ry="55.5" fill="none" stroke="${t.hedge}" stroke-width="7" stroke-dasharray="0 10" stroke-linecap="round"/>`;
   s += `<ellipse cx="165" cy="266" rx="40" ry="20" fill="${t.paving}" stroke="${t.pavingLine}" stroke-width="1.2"/>`;
   s += `<path d="M165 286V318M100 264H125M205 262H214" stroke="${t.paving}" stroke-width="8" stroke-linecap="round"/>`;
+  // Meadow Lane, where new neighbours build, joined to the green by a path between the plots.
+  const meadow = pathD(MEADOW);
+  s += `<path d="M168 316Q174 330 176 344V438" fill="none" stroke="${t.pavingLine}" stroke-width="13" stroke-linecap="round"/><path d="M168 316Q174 330 176 344V438" fill="none" stroke="${t.paving}" stroke-width="10" stroke-linecap="round"/>`;
+  s += `<path d="${meadow}" fill="none" stroke="${C.kerb}" stroke-width="24" stroke-linecap="round"/><path d="${meadow}" fill="none" stroke="${C.road}" stroke-width="17" stroke-linecap="round"/>`;
   s += plot(t, 16, 334, 136, 78, on('orchard') ? t.meadow : t.lawn);
   s += plot(t, 198, 334, 140, 78, on('allotments') ? t.soil : t.meadow);
   s += `<path d="${lane}" fill="none" stroke="${C.kerb}" stroke-width="30" stroke-linecap="round"/><path d="${lane}" fill="none" stroke="${C.road}" stroke-width="22" stroke-linecap="round"/>`;
@@ -334,7 +379,7 @@ export function villageArt(o: VillageArtOpts): string {
   const k = o.kept;
   if (k.has('blossom')) add(236, at(26, 236, treeArt({ ...t, leaves: [{ dark: '#C77B95', mid: '#E9A5BC', light: '#F7CFDC' }] }, 0, 1.3)));
   if (k.has('harvest')) add(326, at(150, 326, [0, 1, 2].map((i) => `<ellipse cx="${i * 12}" cy="0" rx="6" ry="5" fill="#E8833A" stroke="#9C4C17"/><path d="M${i * 12} -5v-3" stroke="#5C9A4A" stroke-width="1.6"/>`).join('')));
-  if (k.has('winter')) add(232, at(118, 232, `<path d="M0-30 14 6H-14Z" fill="#3D5E46"/><path d="M0-30 6 6H-14Z" fill="#54775A"/>${[[-6, -2], [4, -12], [7, 2], [-2, -18]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2" fill="${['#FFD98A', '#E77D9C', '#FFFFFF', '#FFD98A'][i]}"/>`).join('')}<path d="M0-34l2.4 3.4h-4.8z" fill="#E0B04A"/>`));
+  if (k.has('winter')) add(304, at(46, 304, `<path d="M0-30 14 6H-14Z" fill="#3D5E46"/><path d="M0-30 6 6H-14Z" fill="#54775A"/>${[[-6, -2], [4, -12], [7, 2], [-2, -18]].map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="2" fill="${['#FFD98A', '#E77D9C', '#FFFFFF', '#FFD98A'][i]}"/>`).join('')}<path d="M0-34l2.4 3.4h-4.8z" fill="#E0B04A"/>`));
   if (k.has('fete')) add(318, at(30, 318, tent('#D4688A', 0.8)));
   if (k.has('bicycle')) add(196, at(190, 196, `<g transform="scale(.6) translate(0 -14)">${courierBike()}</g>`));
   if (k.has('breadcart')) add(166, at(292, 166, `<ellipse cx="2" cy="10" rx="16" ry="3" ${SHADOW}/><rect x="-13" y="-6" width="24" height="12" rx="2" fill="#D9973F" stroke="#9A6420"/><path d="M-13-6 0-13 11-6" fill="#FFFAF0" stroke="#9A6420"/><circle cx="-7" cy="8" r="3" fill="#6E5236"/><circle cx="6" cy="8" r="3" fill="#6E5236"/>`));
@@ -348,8 +393,35 @@ export function villageArt(o: VillageArtOpts): string {
   }
 
   // ── A few trees and bushes so the village isn't bare between projects. ──
-  ([[12, 124, 'tree'], [186, 102, 'tree'], [292, 196, 'bush'], [14, 336, 'bush'], [176, 330, 'flowers'], [336, 404, 'tree'], [8, 272, 'pine'], [196, 420, 'bush']] as [number, number, string][]).forEach(([x, y, kind], i) =>
-    add(y, at(x, y, kind === 'tree' ? treeArt(t, i % 3, 1.1) : kind === 'pine' ? pineArt(t, 1.1) : kind === 'bush' ? bushArt(t, 1.1) : flowerBedArt(t, i % 3, 1))));
+  const filler = (kind: string, i: number) => kind === 'tree' ? treeArt(t, i % 3, 1.1) : kind === 'pine' ? pineArt(t, 1.1) : kind === 'bush' ? bushArt(t, 1.1) : flowerBedArt(t, i % 3, 1);
+  ([[14, 336, 'bush'], [336, 404, 'tree']] as [number, number, string][]).forEach(([x, y, kind], i) => add(y, at(x, y, filler(kind, i))));
+
+  // ── Decorations from the shop, each in its spot (or what grows there until then). ──
+  Object.entries(SLOTS).forEach(([slot, { at: [x, y], filler: kind }], i) => {
+    const id = o.placed[slot];
+    add(y, at(x, y, id ? decorArt(id, t) : filler(kind, i), o.fresh === `slot:${slot}` ? 'just-restored' : ''));
+  });
+
+  // ── Meadow Lane: a cottage for each neighbour who has moved in, a plot for the rest. ──
+  for (const nb of NEIGHBOURS) {
+    const [x, y] = PLOTS[nb.id];
+    const fresh = o.fresh === `nb:${nb.id}`;
+    s += `<rect x="${x - 27}" y="${y - 30}" width="54" height="36" rx="6" fill="${o.neighbours.has(nb.id) ? t.garden[0] : t.meadow}" opacity=".9"/>`;
+    if (o.neighbours.has(nb.id)) {
+      add(y, at(x, y, houseArt({ ...COTTAGES[nb.id], lit: t.lit, chimney: true, flowers: true }, 1.35), fresh ? 'just-restored' : ''));
+      add(y - 2, at(x + 26, y - 2, tradeArt(nb.id), fresh ? 'just-restored' : ''));
+      add(y + 10, at(x - 14, y + 10, `<g transform="scale(.9)"><rect x="-13" y="-44" width="26" height="48" rx="8" fill="#000" fill-opacity="0"/><g class="villager-bob">${personSvg(nb.name, NEIGHBOUR_PROPS[nb.id])}</g></g>`, fresh ? 'resident-arrive' : '',
+        ` class="villager" data-neighbour="${nb.id}" tabindex="0" role="button" aria-label="${nb.name}: see their requests"`));
+    } else {
+      add(y, at(x, y, `<g class="v-plot" data-neighbour="${nb.id}" role="button" tabindex="0" aria-label="Plot for ${nb.name}: ${nb.cost} coins">
+        <rect x="-26" y="-30" width="52" height="38" fill="#000" fill-opacity="0"/>
+        <path d="M-24-26H24V4H-24Z" fill="none" stroke="#B9A57E" stroke-width="1.6" stroke-dasharray="2 4"/>
+        <path d="M0 2V-16" stroke="#6E5236" stroke-width="2.2" stroke-linecap="round"/>
+        <rect x="-14" y="-29" width="28" height="14" rx="3" fill="#FFF6DD" stroke="#8C6A45" stroke-width="1.3"/>
+        <circle cx="-7" cy="-22" r="4" fill="#E0B04A" stroke="#A67C1E" stroke-width=".8"/><text x="4" y="-18.8" font-size="8.4" font-weight="800" text-anchor="middle" fill="#8E4127" font-family="Nunito, system-ui, sans-serif">${nb.cost}</text>
+      </g>`));
+    }
+  }
 
   // ── The people who came back. ──
   for (const p of PROJECTS) {
@@ -393,8 +465,17 @@ export function villageArt(o: VillageArtOpts): string {
   }
   // Light: lamps and windows glow at dusk; the season tints the whole picture.
   if (on('lamps')) s += lamps.map(([x, y]) => `<circle cx="${x}" cy="${y - 22}" r="${t.lit ? 34 : 22}" fill="url(#v-glow)" class="flicker"/>`).join('');
+  if (o.placing) {
+    s += '</g><g class="v-slots">';
+    for (const [slot, { at: [x, y] }] of Object.entries(SLOTS)) {
+      s += at(x, y - 12, `<g class="v-slot${o.placed[slot] ? ' taken' : ''}" data-slot="${slot}" role="button" tabindex="0" aria-label="Spot ${slot.slice(1)}${o.placed[slot] ? ', swap what is here' : ''}">
+        <circle r="21" fill="#FFFAF0" fill-opacity=".35" stroke="#E0B04A" stroke-width="3" stroke-dasharray="5 4"/>
+        <circle r="9" fill="#E0B04A"/><path d="M-4.4 0h8.8M0-4.4v8.8" stroke="#FFFAF0" stroke-width="2.4" stroke-linecap="round"/></g>`);
+    }
+    s += '</g><g pointer-events="none">';
+  }
   if (o.fresh) {
-    const [x, y] = SITES[o.fresh] ?? [180, 240];
+    const [x, y] = o.fresh.startsWith('slot:') ? SLOTS[o.fresh.slice(5)]?.at ?? [180, 240] : o.fresh.startsWith('nb:') ? PLOTS[o.fresh.slice(3)] ?? [180, 480] : SITES[o.fresh] ?? [180, 240];
     s += at(x, y - 10, `<g class="v-sparkle">${Array.from({ length: 10 }, (_, i) => {
       const a = (i / 10) * Math.PI * 2;
       return `<path d="M0-5 1.4-1.4 5 0 1.4 1.4 0 5-1.4 1.4-5 0-1.4-1.4Z" fill="${i % 2 ? '#E0B04A' : '#FFFAF0'}" style="--dx:${f1(Math.cos(a) * 46)}px;--dy:${f1(Math.sin(a) * 34)}px;animation-delay:${(i % 3) * 60}ms"/>`;
@@ -408,6 +489,7 @@ export function villageArt(o: VillageArtOpts): string {
     <radialGradient id="v-sun" gradientUnits="userSpaceOnUse" cx="60" cy="40" r="520"><stop offset="0" stop-color="${t.sun}"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></radialGradient>
     <pattern id="v-tufts" width="52" height="52" patternUnits="userSpaceOnUse"><path d="M9 14l2-4 2 4M33 33l2-4 2 4M22 46l1.6-3 1.6 3" stroke="${t.lawnTuft}" stroke-width="1.4" fill="none" stroke-linecap="round"/></pattern>
     <pattern id="v-stripes" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(-20)"><rect width="40" height="40" fill="${t.garden[0]}"/><rect width="20" height="40" fill="${t.garden[1]}"/></pattern>
+    ${BRONZE}
     <pattern id="v-rows" width="16" height="16" patternUnits="userSpaceOnUse"><rect width="16" height="16" fill="${t.soil}"/><rect y="2" width="16" height="6" rx="3" fill="${t.crop}"/></pattern>
   </defs>`;
   return `<svg viewBox="${VIEW.x} ${VIEW.y} ${VIEW.w} ${VIEW.h}" preserveAspectRatio="xMidYMid meet" class="village-art${o.animate ? '' : ' still'}" role="img" aria-label="Your village">${defs}${s}</svg>`;

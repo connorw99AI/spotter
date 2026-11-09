@@ -9,7 +9,7 @@ export type Route =
   | { screen: 'chapter'; chapterId: string }
   | { screen: 'settings' }
   | { screen: 'how' }
-  | { screen: 'village' }
+  | { screen: 'village'; tab?: 'village' | 'shop' | 'neighbours' }
   | { screen: 'stamps' }
   | { screen: 'play'; puzzleId: string; mode: 'practice' }
   | { screen: 'play'; puzzleId: string; mode: 'daily'; dateKey: string };

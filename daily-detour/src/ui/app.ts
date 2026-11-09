@@ -3,6 +3,7 @@ import { getPuzzle, nextInBook } from '../data/catalog';
 import { dailyPuzzleId } from '../game/daily';
 import { SaveStore } from '../game/storage';
 import { AdvisorClient } from './advisorClient';
+import { applyPipStyle } from './economy';
 import type { AppServices, Route } from './appTypes';
 import { hashToRoute, routeToHash } from './routes';
 import { PlayScreen } from './play';
@@ -19,6 +20,7 @@ export class App implements AppServices {
 
   constructor(private readonly host: HTMLElement) {
     this.applySettings();
+    applyPipStyle(this);
     this.mq?.addEventListener?.('change', () => this.applySettings());
     window.addEventListener('hashchange', () => this.show(hashToRoute(location.hash)));
     // Browsers only start audio after a gesture.
@@ -69,7 +71,7 @@ export class App implements AppServices {
       case 'chapter': screen = new ChapterScreen(this, route.chapterId); break;
       case 'settings': screen = new SettingsScreen(this, () => this.applySettings()); break;
       case 'how': screen = new HowScreen(this); break;
-      case 'village': screen = new VillageScreen(this); break;
+      case 'village': screen = new VillageScreen(this, route.tab); break;
       case 'stamps': screen = new StampsScreen(this); break;
       case 'play': {
         if (route.mode === 'daily') {

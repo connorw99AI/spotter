@@ -12,7 +12,7 @@ or tested without them, so the game ships everything free until you choose.
   door: no install, shareable result cards, the same puzzle for everyone each day.
 - **App (free download, one unlock at about $4.99):** the same free content, plus the five
   route-book chapters (120 puzzles) and every future chapter, unlocked once, forever. No ads, no
-  energy, no paid hints, no subscription.
+  energy, no subscription. Hints cost coins earned in play (see below), never money.
 - **Apple Arcade:** a cozy, ad-free, premium puzzle game with a daily habit fits its catalogue.
   If accepted, Apple's deal replaces the unlock on iOS. Treat it as upside, not the plan.
 
@@ -20,6 +20,38 @@ Why this shape: it keeps the original promise (no timers, lives, energy or force
 does the marketing through sharing, and the people who play daily for a week are the ones who
 buy. A single unlock earns less per player than aggressive free-to-play, but it is honest and
 cheap to run.
+
+## The coin economy (built, coins only)
+
+Coins are earned by playing and spent in the village shop. No money is involved anywhere in
+the build.
+
+| Earned from | Bronze | Silver | Gold | Notes |
+| --- | --- | --- | --- | --- |
+| Each route-book route (140) | 10 | 20 | 30 | Counted at your best, so replays pay nothing extra |
+| Each neighbour's request (12) | 20 | 40 | 60 | New puzzles that unlock as neighbours move in |
+| Each daily | 15 | 25 | 40 | First result of the day |
+| Starting purse | | | | 50 |
+
+| Spent on | Range | Total to buy everything |
+| --- | --- | --- |
+| Hints (objective / next step) | 10 / 15 | ongoing; the first nudge and the doom recovery are free |
+| 12 decorations, placed in 7 spots | 40–250 | 1,340 |
+| Pip's look: bike, helmet, scarf, jacket, crate | 50–200 | 1,290 |
+| 5 map looks | 100–150 | 600 |
+| 4 neighbours (each brings 3 requests and letters) | 150–420 | 1,130 |
+
+Rough sizing: gold on the whole book and every request earns about 4,970 coins, against about
+4,360 for the whole shop, so a completionist can own everything; a daily-only player earns about
+40 a day and gets there in three to four months. Coins are computed from your records, so they
+can't be duplicated by replaying, and a balance can't go negative.
+
+**If you later sell coin packs** (for example 99p for a few hundred coins): it needs Apple's and
+Google's in-app purchase systems in the native apps (the web version can't take money), a
+restore-purchases button, products set up in both store consoles, and testing on real devices.
+The harder question is design: at today's rates nobody needs to buy coins, which is why it feels
+fair. Selling packs only earns if the shop is priced so that some players run short, and that is
+exactly the pressure the original brief ruled out. Decide that deliberately; don't drift into it.
 
 ## The alternatives
 

@@ -8,7 +8,7 @@ import { isNative, nativeTap } from '../platform/native';
 /** Semitone offsets for climbing cues: a major pentatonic run. */
 const LADDER = [0, 2, 4, 7, 9, 12, 14];
 
-export type Cue = 'step' | 'erase' | 'pickup' | 'deliver' | 'blocked' | 'bell' | 'complete' | 'tap' | 'stamp' | 'gold';
+export type Cue = 'step' | 'erase' | 'pickup' | 'deliver' | 'blocked' | 'bell' | 'complete' | 'tap' | 'stamp' | 'gold' | 'coin';
 
 interface Manifest { cues?: Partial<Record<Cue, string>>; music?: string }
 
@@ -205,6 +205,11 @@ export class Sound {
         for (const off of [0, 0.14]) for (const [f, g] of [[2093, 0.05], [2793, 0.03], [3951, 0.015]] as const) this.tone(f, t + off, 0.45, 'sine', g, { room: true });
         break;
       case 'stamp': this.tone(95, t, 0.22, 'sine', 0.22, { slideTo: 60 }); this.hiss(t, 0.09, 0.12, 900, 0.7); break;
+      case 'coin':
+        // Two bright coin clinks.
+        this.tone(1976, t, 0.09, 'square', 0.025);
+        this.tone(2637, t + 0.07, 0.28, 'triangle', 0.045, { room: true });
+        break;
       case 'gold':
         // A quick shimmer upwards: the route is as short as it gets.
         [1568, 1976, 2349, 3136].forEach((f, i) => this.tone(f, t + i * 0.055, 0.5, 'sine', 0.035, { room: true }));

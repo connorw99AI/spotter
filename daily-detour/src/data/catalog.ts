@@ -2,7 +2,9 @@ import type { PuzzleDef, Tier } from '../core/types';
 import { decodePuzzle } from './codec';
 import { DAILY_BANDS, DAILY_CODES } from './dailies';
 import { GENERATED_PACKS } from './generated';
+import { neighbourOf } from './neighbours';
 import { PUZZLES } from './puzzles';
+import { REQUEST_CODES } from './requests';
 
 export interface Chapter {
   id: string;
@@ -32,7 +34,11 @@ export function getPuzzle(id: string): PuzzleDef | undefined {
   let def: PuzzleDef | undefined;
   const daily = /^daily-(\d{3})$/.exec(id);
   const packed = /^(.+)-(\d{2})$/.exec(id);
-  if (daily) {
+  const request = /^req-([a-z]+)-([1-3])$/.exec(id);
+  if (request) {
+    const code = REQUEST_CODES[request[1]]?.[Number(request[2]) - 1];
+    if (code) def = decodePuzzle(code, { id, number: Number(request[2]), tier: request[2] === '3' ? 'challenging' : 'intermediate', pack: 'requests' });
+  } else if (daily) {
     const i = Number(daily[1]) - 1;
     if (i >= 0 && i < DAILY_CODES.length) def = decodePuzzle(DAILY_CODES[i], { id, number: i + 1, tier: BAND_TIER[DAILY_BANDS[i]] });
   } else if (packed && PACK_BY_ID.has(packed[1])) {
@@ -50,7 +56,7 @@ export function getPuzzle(id: string): PuzzleDef | undefined {
 }
 
 export function chapterOf(p: PuzzleDef): Chapter | undefined {
-  return p.pack ? CHAPTER_BY_ID.get(p.pack) : p.id.startsWith('daily-') ? undefined : CHAPTERS[0];
+  return p.pack ? CHAPTER_BY_ID.get(p.pack) : p.id.startsWith('daily-') || p.id.startsWith('req-') ? undefined : CHAPTERS[0];
 }
 
 export function getChapter(id: string): Chapter | undefined {
@@ -60,6 +66,8 @@ export function getChapter(id: string): Chapter | undefined {
 /** How a puzzle is named in the interface and in shared results. */
 export function puzzleLabel(p: PuzzleDef): string {
   if (p.id.startsWith('daily-')) return 'Daily route';
+  const nb = neighbourOf(p.id);
+  if (nb) return `${nb.name.split(' ')[0]}’s request ${p.number}`;
   if (p.pack) return `${CHAPTER_BY_ID.get(p.pack)?.title ?? 'Route'} ${p.number}`;
   return `Route ${p.number}`;
 }

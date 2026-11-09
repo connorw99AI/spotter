@@ -30,8 +30,8 @@ const LAST_BY_FAMILY: Record<Family, string[]> = {
   comb: ['Street', 'Way', 'Walk', 'Rise', 'End', 'Hill', 'Close', 'Row'],
 };
 void LAST;
-const usedTitles = new Set([...PUZZLES.map((p) => p.title), ...DAILY_CODES.map((c) => c.split('|')[0])]);
-function title(family: Family): string {
+export const usedTitles = new Set([...PUZZLES.map((p) => p.title), ...DAILY_CODES.map((c) => c.split('|')[0])]);
+export function title(family: Family): string {
   for (let k = 0; k < 10_000; k++) {
     const t = `${FIRST[Math.floor(rnd() * FIRST.length)]} ${LAST_BY_FAMILY[family][Math.floor(rnd() * LAST_BY_FAMILY[family].length)]}`;
     if (!usedTitles.has(t)) { usedTitles.add(t); return t; }
@@ -52,7 +52,7 @@ const PLACE: Record<Family, string[]> = {
   comb: ['along the high street', 'up and down the closes', 'off the main street'],
 };
 
-function brief(c: Candidate): string {
+export function brief(c: Candidate): string {
   const d = c.def;
   const n = d.orders.length;
   const parts: string[] = [];
@@ -77,7 +77,7 @@ function brief(c: Candidate): string {
 }
 
 /** Stage-one hint: one or two strategic observations drawn from the solver's analysis. */
-function hint(c: Candidate): string {
+export function hint(c: Candidate): string {
   const d = c.def;
   const town = buildTown(d);
   const sim = simulate(town, c.route);
@@ -142,7 +142,8 @@ const best = (list: Tagged[], band: Band | 'intro', n: number) =>
   list.filter((c) => (band === 'intro' ? c.intro : !c.intro && c.band === band)).sort((a, b) => b.score - a.score).slice(0, n);
 
 const packOut: { id: string; title: string; blurb: string; featured: string; codes: string[] }[] = [];
-for (const pack of PACKS) {
+const direct = /curate\.ts$/.test(process.argv[1] ?? '');
+for (const pack of direct ? PACKS : []) {
   const list = chapterPool(pack.id);
   const intro = best(list, 'intro', 1);
   const rest = [...best(list, 'easy', intro.length ? 7 : 8), ...best(list, 'medium', 9), ...best(list, 'hard', 7)].sort((a, b) => a.difficulty - b.difficulty);
@@ -160,6 +161,6 @@ export interface PackData { id: string; title: string; blurb: string; featured: 
 
 export const GENERATED_PACKS: PackData[] = ${JSON.stringify(packOut, null, 1)};
 `;
-writeFileSync('src/data/generated.ts', body);
-console.log(`packs: ${packOut.map((p) => `${p.title} ${p.codes.length}`).join(', ')}; file ${(body.length / 1024).toFixed(0)} KB`);
+if (direct) writeFileSync('src/data/generated.ts', body);
+if (direct) console.log(`packs: ${packOut.map((p) => `${p.title} ${p.codes.length}`).join(', ')}; file ${(body.length / 1024).toFixed(0)} KB`);
 for (const p of packOut) console.log(' ', p.title, '→', p.codes[0].split('|').slice(0, 3).join(' / '));

@@ -1,3 +1,4 @@
+import { pipStyle } from './pipStyle';
 /**
  * Illustrated portraits, built from a name so each resident always looks the same.
  * Couples and groups get two or three faces. Drawn in a -20..20 box.
@@ -57,7 +58,8 @@ export const PIP_LOOK: Look = { skin: '#F1D7B8', hair: '#6B4A2E', style: 0, glas
 
 function pip(): string {
   const l = PIP_LOOK;
-  return `${face(l, 0, 1, 1)}<path d="M-12-4C-12-16 12-16 12-4Z" fill="#2F5D46"/><path d="M10-5h6" stroke="#2F5D46" stroke-width="2.4" stroke-linecap="round"/><path d="M-8 14C-3 17 3 17 8 14" stroke="#B85C38" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
+  const P = pipStyle;
+  return `${face(l, 0, 1, 1)}<path d="M-12-4C-12-16 12-16 12-4Z" fill="${P.helmet}"/>${P.dots ? '<circle cx="-6" cy="-9" r="1.6" fill="#FFFAF0"/><circle cx="0" cy="-12" r="1.6" fill="#FFFAF0"/><circle cx="6" cy="-8.6" r="1.6" fill="#FFFAF0"/>' : ''}<path d="M10-5h6" stroke="${P.helmet}" stroke-width="2.4" stroke-linecap="round"/><path d="M-8 14C-3 17 3 17 8 14" stroke="${P.scarf}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
 }
 
 export function portraitSvg(name: string, size = 40): string {

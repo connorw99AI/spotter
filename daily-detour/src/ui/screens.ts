@@ -15,6 +15,7 @@ import { miniMapSvg } from './scene';
 import { flowerBedArt, houseArt, lampArt, pineArt, randomHouseLook, shopArt, treeArt } from './sceneryArt';
 import { THEMES, themeFor } from './theme';
 import { h, icon, setKids } from './dom';
+import { coinBalance, coinPill } from './economy';
 
 export interface Screen {
   readonly root: HTMLElement;
@@ -271,7 +272,9 @@ export class HomeScreen implements Screen {
         h('p', { class: 'muted' }, ready.length ? `${ready[0].resident} is waiting: ${ready[0].title.toLowerCase()}.` : upcoming ? `${Math.max(0, upcoming.cost - hearts)} more hearts. Deliveries earn hearts: 1 for bronze, 2 for silver, 3 for gold.` : 'Every corner of the village is mended. The fete goes on.')),
       h('div', { class: 'village-card-side' },
         h('span', { class: 'hearts', 'aria-label': `${hearts} hearts` }, icon(heartIcon, 18), String(hearts)),
-        h('button', { class: `btn ${ready.length ? 'btn-primary' : 'btn-quiet'}`, type: 'button', onclick: () => this.app.go({ screen: 'village' }) }, 'Visit the village')),
+        coinPill(coinBalance(this.app)),
+        h('button', { class: `btn ${ready.length ? 'btn-primary' : 'btn-quiet'}`, type: 'button', onclick: () => this.app.go({ screen: 'village' }) }, 'Visit the village'),
+        h('button', { class: 'btn btn-quiet', type: 'button', onclick: () => this.app.go({ screen: 'village', tab: 'shop' }) }, 'Shop')),
     );
 
     const banner = ev ? h('aside', { class: 'event-banner' },
@@ -494,7 +497,10 @@ export class HowScreen implements Screen {
           h('li', {}, h('b', {}, 'Keyboard:'), ' arrow keys ride towards a corner (Home, Page Up, End and Page Down for diagonals), Space picks between corners, Enter rides there, Backspace or Ctrl+Z undoes.'),
         ),
         h('h2', {}, 'Stamps'),
-        h('p', {}, 'Any complete round earns bronze. Silver is within 15% of the shortest route (at least two moves of slack). Gold is the shortest route there is. Hints are counted on your result and nowhere else.'),
+        h('p', {}, 'Any complete round earns bronze. Silver is within 15% of the shortest route (at least two moves of slack). Gold is the shortest route there is. Hints are counted on your result.'),
+        h('h2', {}, 'Coins and the village shop'),
+        h('p', {}, 'Each route pays coins the first time you deliver it: 10 for bronze, 20 for silver, 30 for gold, and the difference if you improve later. Dailies pay 15, 25 or 40, and neighbours’ special deliveries up to 60. Replays don’t pay twice.'),
+        h('p', {}, 'Spend coins in the village shop on decorations, Pip’s look, map scenery and new neighbours. The first hint on a route is free; the next objective costs 10 coins and the next step 15. If your route can no longer finish, the way back is always free. Coins can’t be bought with money.'),
       ),
     );
   }

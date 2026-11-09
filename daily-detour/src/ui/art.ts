@@ -1,3 +1,4 @@
+import { pipStyle, type PipStyle } from './pipStyle';
 import type { ShopKind } from '../core/types';
 
 /**
@@ -71,6 +72,7 @@ export const bellIcon = `<path d="M-7 5c2-2 1.6-5 2-8a5 5 0 0 1 10 0c.4 3 0 6 2 
 export const shareIcon = `<path d="M0 3V-9M-5-4 0-9l5 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M-6-1h-2v10H8V-1H6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>`;
 export const gearIcon = `<circle r="3.4" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M0-10v3.2M0 6.8V10M-10 0h3.2M6.8 0H10M-7-7l2.3 2.3M4.7 4.7 7 7M-7 7l2.3-2.3M4.7-4.7 7-7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>`;
 export const bookIcon = `<path d="M-9-7c3-1.6 6-1.6 9 .6 3-2.2 6-2.2 9-.6V8C6 6.4 3 6.4 0 8.6-3 6.4-6 6.4-9 8Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M0-6.4V8.6" stroke="currentColor" stroke-width="2"/>`;
+export const coinIcon = `<circle r="9" fill="#E0B04A" stroke="#A67C1E" stroke-width="1.6"/><circle r="5.6" fill="none" stroke="#F6D98A" stroke-width="1.4"/><path d="M-3.6-5.6a7 7 0 0 1 6.6-1.4" fill="none" stroke="#FFF3C8" stroke-width="1.4" stroke-linecap="round"/>`;
 export const heartIcon = `<path d="M0 9C-9 3-11-3-8-7-5-10.6-1.4-9 0-6 1.4-9 5-10.6 8-7 11-3 9 3 0 9Z" fill="#D4688A" stroke="#9B3E5C" stroke-width="1.4" stroke-linejoin="round"/><path d="M-5.6-5.4c-1.4.4-2.4 1.6-2.4 3" fill="none" stroke="#FFFFFF" stroke-width="1.4" stroke-linecap="round" opacity=".7"/>`;
 export const flameIcon = `<path d="M0 10C-6 10-8 5-7 1-6-3-2-5-2-10 2-7 3-4 2-1 4-2 5-4 5-5 8-1 8 4 6 7 4 9 2 10 0 10Z" fill="#E0B04A" stroke="#A67C1E" stroke-width="1.3" stroke-linejoin="round"/><path d="M0 9C-3 9-3 5-1 3 0 5 2 5 2 4 3 6 2 9 0 9Z" fill="#B85C38"/>`;
 export const calendarIcon = `<rect x="-9" y="-7" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M-9-2h18M-4-10v5M4-10v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="-3" cy="3" r="1.6" fill="currentColor"/><circle cx="3" cy="3" r="1.6" fill="currentColor"/>`;
@@ -96,7 +98,23 @@ export const mechanicIcon: Record<string, { svg: string; label: string }> = {
  * y = 8. Inner groups carry classes so CSS can spin the wheels and bob the rider
  * without touching the transforms the map sets on the outer group.
  */
-export function courierSvg(): string {
+/** The front crate, in whichever version Pip has chosen. */
+function crateArt(kind: PipStyle['crate']): string {
+  switch (kind) {
+    case 'flowers':
+      return `<rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#D9A55B" stroke="#8A5524" stroke-width="1.6"/><path d="M-8-1h17M-8 3h17" stroke="#B9843F" stroke-width="1"/>`
+        + [[-5, -8, '#E77D9C'], [-1, -10, '#F2D36B'], [3, -8.6, '#FFFFFF'], [6.6, -9.6, '#D4688A'], [1, -6.6, '#9B6FC2']].map(([x, y, c]) => `<circle cx="${x}" cy="${y}" r="2.4" fill="${c}" stroke="#7A5C3E" stroke-width=".5"/>`).join('');
+    case 'picnic':
+      return `<rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#FFFAF0" stroke="#A33A32" stroke-width="1.6"/><path d="M-4-6v12M0-6v12M4-6v12M-8-2h17M-8 2h17" stroke="#D9574A" stroke-width="1.6" opacity=".75"/><path d="M-6-6c3-5 9-6 12-3" fill="none" stroke="#8A5524" stroke-width="1.4"/><rect x="-3" y="-11" width="11" height="3" rx="1.5" fill="#E7A95A" stroke="#8A5524" stroke-width=".7" transform="rotate(-20)"/>`;
+    case 'dog':
+      return `<rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#B85C38" stroke="#8E4127" stroke-width="1.8"/><path d="M-8-1.5h17" stroke="#E0B04A" stroke-width="1.8"/>`
+        + `<g class="pup"><circle cx="1" cy="-9" r="5" fill="#D9B07A" stroke="#7A5C3E" stroke-width=".8"/><path d="M-3.6-12.4c-2 1-2.4 4-1 6M5.6-12.4c2 1 2.4 4 1 6" fill="#8C6A45" stroke="#7A5C3E" stroke-width=".6"/><circle cx="-.6" cy="-9.6" r=".8" fill="#23352B"/><circle cx="2.8" cy="-9.6" r=".8" fill="#23352B"/><ellipse cx="1.2" cy="-7.4" rx="1.4" ry="1" fill="#23352B"/><path d="M1.2-6.6v1.4" stroke="#D4688A" stroke-width="1"/></g>`;
+    default:
+      return `<rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#B85C38" stroke="#8E4127" stroke-width="1.8"/><path d="M-8-1.5h17" stroke="#E0B04A" stroke-width="1.8"/><path d="M-5-6c0-4 4-5 6-2" fill="#E7A95A" stroke="#8A5524" stroke-width="1"/><circle cx="5" cy="-7.4" r="2.4" fill="#E77D9C" stroke="#9B3E5C" stroke-width=".8"/>`;
+  }
+}
+
+export function courierSvg(P: PipStyle = pipStyle): string {
   const wheel = (x: number) => `<g transform="translate(${x} 8)">
       <circle r="9.6" fill="#FFFAF0" fill-opacity=".35" stroke="#23352B" stroke-width="3.2"/>
       <g class="spokes"><path d="M-8 0H8M0-8V8M-5.6-5.6l11.2 11.2M-5.6 5.6 5.6-5.6" stroke="#23352B" stroke-width="1" opacity=".55"/></g>
@@ -106,26 +124,22 @@ export function courierSvg(): string {
     <ellipse cx="2" cy="18" rx="30" ry="5" fill="#23352B" opacity=".2"/>
     <g class="speed"><path d="M-40-6h12M-44 2h14M-38 10h9" stroke="#FFFAF0" stroke-width="2.6" stroke-linecap="round" opacity=".9"/></g>
     ${wheel(-18)}${wheel(18)}
-    <path d="M-18 8-4 8 7-6M-4 8-9-7M18 8 10-10" fill="none" stroke="#2F5D46" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M-18 8-4 8 7-6M-4 8-9-7M18 8 10-10" fill="none" stroke="${P.frame}" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M-4 8l2 3" stroke="#23352B" stroke-width="2" stroke-linecap="round"/>
     <path d="M-14-8h9" stroke="#23352B" stroke-width="3.4" stroke-linecap="round"/>
-    <g transform="translate(21 -9)">
-      <rect x="-8" y="-6" width="17" height="12" rx="2.5" fill="#B85C38" stroke="#8E4127" stroke-width="1.8"/>
-      <path d="M-8-1.5h17" stroke="#E0B04A" stroke-width="1.8"/>
-      <path d="M-5-6c0-4 4-5 6-2" fill="#E7A95A" stroke="#8A5524" stroke-width="1"/>
-      <circle cx="5" cy="-7.4" r="2.4" fill="#E77D9C" stroke="#9B3E5C" stroke-width=".8"/>
-    </g>
+    <g transform="translate(21 -9)">${crateArt(P.crate)}</g>
     <path d="M7-11h7" stroke="#23352B" stroke-width="3" stroke-linecap="round"/>
     <g class="rider">
-      <path class="scarf" d="M1-21C-5-21-9-19-12-16" fill="none" stroke="#B85C38" stroke-width="3" stroke-linecap="round"/>
-      <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="#E0B04A" stroke-width="7.4" stroke-linecap="round"/>
+      <path class="scarf" d="M1-21C-5-21-9-19-12-16" fill="none" stroke="${P.scarf}" stroke-width="3" stroke-linecap="round"/>
+      <path d="M-9-7C-8-17-1-23 4-22" fill="none" stroke="${P.jacket}" stroke-width="7.4" stroke-linecap="round"/>
       <path d="M-8-6 0 1" stroke="#2F5D46" stroke-width="5" stroke-linecap="round"/>
       <path d="M1-19 9-12" stroke="#F1D7B8" stroke-width="3.4" stroke-linecap="round"/>
       <circle cx="5" cy="-29" r="6.6" fill="#F1D7B8"/>
       <circle cx="8.4" cy="-29.4" r=".9" fill="#23352B"/>
       <path d="M7.2-26c1 .8 2.2.8 3 0" fill="none" stroke="#8E4127" stroke-width=".9" stroke-linecap="round"/>
-      <path d="M-1.8-30.4C-1.8-38 11.6-38 11.6-30.4Z" fill="#2F5D46"/>
-      <path d="M9.8-31.2h5.4" stroke="#2F5D46" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M-1.8-30.4C-1.8-38 11.6-38 11.6-30.4Z" fill="${P.helmet}"/>
+      ${P.dots ? '<circle cx="1.6" cy="-33" r="1.2" fill="#FFFAF0"/><circle cx="5.6" cy="-35.4" r="1.2" fill="#FFFAF0"/><circle cx="8.8" cy="-32.4" r="1.2" fill="#FFFAF0"/>' : ''}
+      <path d="M9.8-31.2h5.4" stroke="${P.helmet}" stroke-width="2.4" stroke-linecap="round"/>
       <path d="M1-35.6c2-1.2 5-1.4 7-.4" fill="none" stroke="#FFFAF0" stroke-width="1.2" stroke-linecap="round" opacity=".6"/>
     </g>
   </g>`;

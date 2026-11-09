@@ -23,6 +23,10 @@ collect orders, deliver them under a few simple rules, and ride home.
   a route can no longer finish.
 - **Your village:** deliveries earn hearts (bronze 1, silver 2, gold 3) that restore 12 corners
   of the courier's home village, each with a note from the resident who asked.
+- **Coins and the village shop:** each route also pays coins the first time (more for gold),
+  spent on decorations you place, Pip's outfit, map scenery, hints, and new neighbours who move
+  into Meadow Lane with three new puzzles each (`src/data/requests.ts`, made with
+  `scripts/curate-requests.ts`). Coins are earned only; see `docs/BUSINESS.md`.
 - **Residents** on every route, with thank-you notes on the result card.
 - **Seasonal events** on fixed UTC dates (Blossom Week, Summer Fete, Harvest Fair, Winter Lights)
   that change the daily's scenery and earn village keepsakes.
@@ -69,5 +73,6 @@ every generated puzzle yet; playtesting is the next step that matters most.
 | Solver and validation | `src/core/solver.ts`, `src/core/validate.ts`, `src/core/analysis.ts` |
 | Route input and hints | `src/game/editor.ts`, `src/game/advisor.ts` (+ worker), `src/ui/play.ts` |
 | Progress and meta | `src/game/storage.ts`, `src/game/daily.ts`, `src/game/meta.ts`, `src/game/residents.ts` |
-| Rendering | `src/ui/mapView.ts`, `src/ui/scene.ts`, `src/ui/sceneryArt.ts`, `src/ui/theme.ts`, `src/ui/village.ts` |
+| Rendering | `src/ui/mapView.ts`, `src/ui/scene.ts`, `src/ui/sceneryArt.ts`, `src/ui/theme.ts`, `src/ui/village.ts`, `src/ui/villageArt.ts`, `src/ui/decorArt.ts`, `src/ui/people.ts` |
+| Shop and coins | `src/game/shop.ts`, `src/ui/economy.ts`, `src/data/neighbours.ts` |
 | Native | `src/platform/native.ts`, `capacitor.config.ts`, `ios/`, `android/` |

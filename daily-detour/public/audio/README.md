@@ -16,6 +16,7 @@ recorded audio instead, put the files in this folder and add `manifest.json`:
     "stamp": "stamp.mp3",
     "complete": "complete.mp3",
     "gold": "gold.mp3",
+    "coin": "coin.mp3",
     "tap": "tap.mp3"
   }
 }

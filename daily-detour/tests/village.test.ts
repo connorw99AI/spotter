@@ -4,7 +4,7 @@ import { THEMES } from '../src/ui/theme';
 import { SITES, villageArt } from '../src/ui/villageArt';
 
 const art = (restored: string[], signs: { id: string; cost: number; ready: boolean }[] = []) =>
-  villageArt({ theme: THEMES.autumn, restored: new Set(restored), kept: new Set(), fresh: null, signs, animate: false });
+  villageArt({ theme: THEMES.autumn, restored: new Set(restored), kept: new Set(), fresh: null, signs, animate: false, placed: {}, placing: false, neighbours: new Set() });
 
 describe('the village', () => {
   it('changes the picture and brings out a resident for every project', () => {
